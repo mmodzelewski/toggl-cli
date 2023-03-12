@@ -26,10 +26,11 @@ fn main() -> Result<()> {
     match args.command {
         Some(command) => match command {
             Command::Start => todo!(),
-            Command::Stop => todo!(),
-            Command::Status => print_current_entry(&client)?,
+            Command::Stop => client.stop_current_entry()?,
+            Command::Status => client.print_current_entry()?,
+            Command::Recent => client.print_recent_entries()?,
         },
-        None => print_latest_entries(&client)?,
+        None => client.print_recent_entries()?,
     }
 
     return Ok(());
@@ -56,34 +57,57 @@ impl TogglClient {
             .basic_auth(&self.auth.username, Some(&self.auth.password))
             .header(CONTENT_TYPE, "application/json")
     }
-}
 
-fn print_latest_entries(client: &TogglClient) -> Result<()> {
-    let json: Vec<TimeEntry> = client
-        .request(Method::GET, "me/time_entries".to_string())
-        .send()?
-        .json()?;
+    fn print_recent_entries(&self) -> Result<()> {
+        let time_entries: Vec<TimeEntry> = self
+            .request(Method::GET, "me/time_entries".to_string())
+            .send()?
+            .json()?;
 
-    for time_entry in json {
-        println!("{}", time_entry);
+        for time_entry in time_entries {
+            println!("{}", time_entry);
+        }
+
+        return Ok(());
     }
 
-    return Ok(());
-}
+    fn print_current_entry(&self) -> Result<()> {
+        let maybe_time_entry = self.get_current_entry()?;
+        if let Some(time_entry) = maybe_time_entry {
+            println!("{}", time_entry);
+        } else {
+            println!("There are no active time entries");
+        }
 
-fn print_current_entry(client: &TogglClient) -> Result<()> {
-    let response: Option<TimeEntry> = client
-        .request(Method::GET, "me/time_entries/current".to_string())
-        .send()?
-        .json()?;
-
-    if let Some(time_entry) = response {
-        println!("{}", time_entry);
-    } else {
-        println!("There are no active time entries");
+        return Ok(());
     }
 
-    return Ok(());
+    fn get_current_entry(&self) -> Result<Option<TimeEntry>> {
+        return self
+            .request(Method::GET, "me/time_entries/current".to_string())
+            .send()?
+            .json()
+            .context("Could not get time entry");
+    }
+
+    fn stop_current_entry(&self) -> Result<()> {
+        let maybe_time_entry = self.get_current_entry()?;
+        if let Some(time_entry) = maybe_time_entry {
+             let time_entry: TimeEntry = self
+                .request(
+                    Method::PATCH,
+                    format!(
+                        "workspaces/{}/time_entries/{}/stop",
+                        time_entry.workspace_id, time_entry.id
+                    ),
+                )
+                .send()?
+                .json()
+                .context("Could not stop the current time entry")?;
+             println!("Stopped time entry: {}", time_entry)
+        }
+        return Ok(());
+    }
 }
 
 fn read_env_variables() -> Result<Auth> {
@@ -118,10 +142,13 @@ enum Command {
     Start,
     Stop,
     Status,
+    Recent,
 }
 
 #[derive(Debug, Deserialize)]
 struct TimeEntry {
+    id: u64,
+    workspace_id: u64,
     description: Option<String>,
     start: String,
     stop: Option<String>,
