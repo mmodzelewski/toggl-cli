@@ -18,7 +18,11 @@ fn main() -> Result<()> {
     let auth = read_env_variables()?;
 
     match args.command {
-        Some(_) => todo!(),
+        Some(command) => match command {
+            Command::Start => todo!(),
+            Command::Stop => todo!(),
+            Command::Status => print_current_entry(&auth)?,
+        },
         None => print_latest_entries(&auth)?,
     }
 
@@ -39,6 +43,27 @@ fn print_latest_entries(auth: &Auth) -> Result<()> {
 
     for time_entry in json {
         println!("{}", time_entry);
+    }
+
+    return Ok(());
+}
+
+fn print_current_entry(auth: &Auth) -> Result<()> {
+    let client = Client::new();
+    let response: Option<TimeEntry> = client
+        .request(
+            Method::GET,
+            "https://api.track.toggl.com/api/v9/me/time_entries/current".to_string(),
+        )
+        .basic_auth(&auth.username, Some(&auth.password))
+        .header(CONTENT_TYPE, "application/json")
+        .send()?
+        .json()?;
+
+    if let Some(time_entry) = response {
+        println!("{}", time_entry);
+    } else{
+        println!("There are no active time entries");
     }
 
     return Ok(());
@@ -72,6 +97,7 @@ struct Auth {
 enum Command {
     Start,
     Stop,
+    Status,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,7 +111,7 @@ impl Display for TimeEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let empty_description = "no description".to_string();
         let description = match &self.description {
-            Some(desc) => desc,
+            Some(desc) => default_if_empty(desc, &empty_description),
             None => &empty_description,
         };
 
@@ -97,4 +123,11 @@ impl Display for TimeEntry {
 
         return write!(f, "{}: {} - {}", description, &self.start, stop);
     }
+}
+
+fn default_if_empty<'a>(text: &'a String, default: &'a String) -> &'a String {
+    if text.is_empty() {
+        return default;
+    } 
+    return text;
 }
