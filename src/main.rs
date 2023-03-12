@@ -2,6 +2,7 @@ use std::{collections::HashMap, fmt::Display, fs};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use directories::ProjectDirs;
 use reqwest::{blocking::Client, header::CONTENT_TYPE, Method};
 use serde::Deserialize;
 
@@ -62,7 +63,7 @@ fn print_current_entry(auth: &Auth) -> Result<()> {
 
     if let Some(time_entry) = response {
         println!("{}", time_entry);
-    } else{
+    } else {
         println!("There are no active time entries");
     }
 
@@ -70,7 +71,10 @@ fn print_current_entry(auth: &Auth) -> Result<()> {
 }
 
 fn read_env_variables() -> Result<Auth> {
-    let env_file = fs::read_to_string(".env").context(".env file should exist")?;
+    let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
+        .context("Could not retrieve home directory")?;
+    let env_file =
+        fs::read_to_string(dirs.config_dir().join("config")).context("config file should exist")?;
     let variables: HashMap<&str, &str> = env_file
         .lines()
         .filter_map(|line| line.split_once("="))
@@ -128,6 +132,6 @@ impl Display for TimeEntry {
 fn default_if_empty<'a>(text: &'a String, default: &'a String) -> &'a String {
     if text.is_empty() {
         return default;
-    } 
+    }
     return text;
 }
