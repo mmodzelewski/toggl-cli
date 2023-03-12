@@ -1,9 +1,13 @@
 use std::{collections::HashMap, fmt::Display, fs};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Ok, Result};
 use clap::{Parser, Subcommand};
 use directories::ProjectDirs;
-use reqwest::{blocking::Client, header::CONTENT_TYPE, Method};
+use reqwest::{
+    blocking::{Client, RequestBuilder},
+    header::CONTENT_TYPE,
+    Method,
+};
 use serde::Deserialize;
 
 #[derive(Parser, Debug)]
@@ -17,28 +21,46 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     let auth = read_env_variables()?;
+    let client = TogglClient::new(auth)?;
 
     match args.command {
         Some(command) => match command {
             Command::Start => todo!(),
             Command::Stop => todo!(),
-            Command::Status => print_current_entry(&auth)?,
+            Command::Status => print_current_entry(&client)?,
         },
-        None => print_latest_entries(&auth)?,
+        None => print_latest_entries(&client)?,
     }
 
     return Ok(());
 }
 
-fn print_latest_entries(auth: &Auth) -> Result<()> {
-    let client = Client::new();
+struct TogglClient {
+    base_url: String,
+    client: Client,
+    auth: Auth,
+}
+
+impl TogglClient {
+    fn new(auth: Auth) -> Result<TogglClient> {
+        return Ok(TogglClient {
+            base_url: "https://api.track.toggl.com/api/v9/".to_string(),
+            client: Client::new(),
+            auth,
+        });
+    }
+
+    fn request(&self, method: Method, path: String) -> RequestBuilder {
+        self.client
+            .request(method, (&self.base_url).to_string() + &path)
+            .basic_auth(&self.auth.username, Some(&self.auth.password))
+            .header(CONTENT_TYPE, "application/json")
+    }
+}
+
+fn print_latest_entries(client: &TogglClient) -> Result<()> {
     let json: Vec<TimeEntry> = client
-        .request(
-            Method::GET,
-            "https://api.track.toggl.com/api/v9/me/time_entries".to_string(),
-        )
-        .basic_auth(&auth.username, Some(&auth.password))
-        .header(CONTENT_TYPE, "application/json")
+        .request(Method::GET, "me/time_entries".to_string())
         .send()?
         .json()?;
 
@@ -49,15 +71,9 @@ fn print_latest_entries(auth: &Auth) -> Result<()> {
     return Ok(());
 }
 
-fn print_current_entry(auth: &Auth) -> Result<()> {
-    let client = Client::new();
+fn print_current_entry(client: &TogglClient) -> Result<()> {
     let response: Option<TimeEntry> = client
-        .request(
-            Method::GET,
-            "https://api.track.toggl.com/api/v9/me/time_entries/current".to_string(),
-        )
-        .basic_auth(&auth.username, Some(&auth.password))
-        .header(CONTENT_TYPE, "application/json")
+        .request(Method::GET, "me/time_entries/current".to_string())
         .send()?
         .json()?;
 
