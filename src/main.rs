@@ -21,8 +21,13 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let auth = read_env_variables()?;
-    let client = TogglClient::new(auth)?;
+    if let Some(Command::Login { ref token }) = args.command {
+        set_api_token(token)?;
+        return Ok(());
+    }
+
+    let config = read_config()?;
+    let client = TogglClient::new(config)?;
 
     match args.command {
         Some(command) => match command {
@@ -31,6 +36,7 @@ fn main() -> Result<()> {
             Command::Status => client.print_current_entry()?,
             Command::Recent => client.print_recent_entries()?,
             Command::Restart => client.restart()?,
+            Command::Login { token: _ } => unreachable!(),
         },
         None => client.print_recent_entries()?,
     }
@@ -41,22 +47,22 @@ fn main() -> Result<()> {
 struct TogglClient {
     base_url: String,
     client: Client,
-    auth: Auth,
+    config: Config,
 }
 
 impl TogglClient {
-    fn new(auth: Auth) -> Result<TogglClient> {
+    fn new(config: Config) -> Result<TogglClient> {
         return Ok(TogglClient {
             base_url: "https://api.track.toggl.com/api/v9/".to_string(),
             client: Client::new(),
-            auth,
+            config,
         });
     }
 
     fn request(&self, method: Method, path: String) -> RequestBuilder {
         self.client
             .request(method, (&self.base_url).to_string() + &path)
-            .basic_auth(&self.auth.username, Some(&self.auth.password))
+            .basic_auth(&self.config.api_token, Some("api_token"))
             .header(CONTENT_TYPE, "application/json")
     }
 
@@ -137,31 +143,59 @@ impl TogglClient {
     }
 }
 
-fn read_env_variables() -> Result<Auth> {
+fn read_config() -> Result<Config> {
     let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
         .context("Could not retrieve home directory")?;
-    let env_file =
-        fs::read_to_string(dirs.config_dir().join("config")).context("config file should exist")?;
+    let env_file = fs::read_to_string(dirs.config_dir().join("config"))
+        .context("Config file not found. Please use login command to set API token.")?;
     let variables: HashMap<&str, &str> = env_file
         .lines()
         .filter_map(|line| line.split_once("="))
         .collect();
+    let api_token = variables
+        .get("API_TOKEN")
+        .context("API token not set. Please use login command to set it.")?;
 
-    return Ok(Auth {
-        username: variables
-            .get("USERNAME")
-            .context("Username must be provided")?
-            .to_string(),
-        password: variables
-            .get("PASSWORD")
-            .context("Password must be provided")?
-            .to_string(),
+    return Ok(Config {
+        api_token: api_token.to_string(),
     });
 }
 
-struct Auth {
-    username: String,
-    password: String,
+fn set_api_token(api_token: &str) -> Result<()> {
+    let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
+        .context("Could not retrieve home directory")?;
+
+    let config_dir = dirs.config_dir();
+    if !config_dir.exists() {
+        fs::create_dir_all(config_dir)?;
+    }
+
+    let config_path = config_dir.join("config");
+    let content = if config_path.exists() {
+        fs::read_to_string(&config_path)?
+    } else {
+        "".to_string()
+    };
+
+    let mut variables = content
+        .lines()
+        .filter_map(|line| line.split_once("="))
+        .collect::<HashMap<&str, &str>>();
+
+    variables.insert("API_TOKEN", api_token);
+    let new_config = variables
+        .iter()
+        .map(|(key, value)| String::new() + key + "=" + value)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    fs::write(&config_path, new_config).context("Could not save config file")?;
+
+    return Ok(());
+}
+
+struct Config {
+    api_token: String,
 }
 
 #[derive(Subcommand, Debug)]
@@ -171,6 +205,10 @@ enum Command {
     Status,
     Recent,
     Restart,
+    Login {
+        #[arg(long)]
+        token: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
