@@ -23,6 +23,9 @@ fn main() -> Result<()> {
 
     if let Some(Command::Login { ref token }) = args.command {
         set_api_token(token)?;
+        let config = read_config()?;
+        let client = TogglClient::new(config)?;
+        set_workspace_id(client.get_default_workspace_id()?)?;
         return Ok(());
     }
 
@@ -31,7 +34,7 @@ fn main() -> Result<()> {
 
     match args.command {
         Some(command) => match command {
-            Command::Start => todo!(),
+            Command::Start { description } => client.start(description)?,
             Command::Stop => client.stop_current_entry()?,
             Command::Status => client.print_current_entry()?,
             Command::Recent => client.print_recent_entries()?,
@@ -141,6 +144,43 @@ impl TogglClient {
         }
         return Ok(());
     }
+
+    fn start(&self, description: Option<String>) -> Result<()> {
+        let now = Utc::now();
+        let workspace_id = self
+            .config
+            .workspace_id
+            .context("workspace id should be set")?;
+        let new_time_entry = NewTimeEntry {
+            workspace_id,
+            created_with: "toggl-cli".to_string(),
+            description,
+            project_id: None,
+            start: format!("{:?}", now),
+            duration: -1 * now.timestamp(),
+        };
+
+        let stared_entry: TimeEntry = self
+            .request(
+                Method::POST,
+                format!("workspaces/{}/time_entries", workspace_id),
+            )
+            .json(&new_time_entry)
+            .send()?
+            .json()
+            .context("Could not start a time entry")?;
+        println!("Time entry started: {}", stared_entry);
+        return Ok(());
+    }
+
+    fn get_default_workspace_id(&self) -> Result<u64> {
+        return self
+            .request(Method::GET, "me".to_string())
+            .send()?
+            .json::<UserData>()
+            .map(|data| data.default_workspace_id)
+            .context("Could not get user data");
+    }
 }
 
 fn read_config() -> Result<Config> {
@@ -156,8 +196,14 @@ fn read_config() -> Result<Config> {
         .get("API_TOKEN")
         .context("API token not set. Please use login command to set it.")?;
 
+    let workspace_id = variables
+        .get("DEFAULT_WORKSPACE_ID")
+        .map(|id| id.parse::<u64>().context("Could not parse workspace_id"))
+        .transpose()?;
+
     return Ok(Config {
         api_token: api_token.to_string(),
+        workspace_id,
     });
 }
 
@@ -194,13 +240,50 @@ fn set_api_token(api_token: &str) -> Result<()> {
     return Ok(());
 }
 
+fn set_workspace_id(workspace_id: u64) -> Result<()> {
+    let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
+        .context("Could not retrieve home directory")?;
+
+    let config_dir = dirs.config_dir();
+    if !config_dir.exists() {
+        fs::create_dir_all(config_dir)?;
+    }
+
+    let config_path = config_dir.join("config");
+    let content = if config_path.exists() {
+        fs::read_to_string(&config_path)?
+    } else {
+        "".to_string()
+    };
+
+    let mut variables = content
+        .lines()
+        .filter_map(|line| line.split_once("="))
+        .collect::<HashMap<&str, &str>>();
+
+    let workspace_id = workspace_id.to_string();
+    variables.insert("DEFAULT_WORKSPACE_ID", &workspace_id);
+    let new_config = variables
+        .iter()
+        .map(|(key, value)| String::new() + key + "=" + value)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    fs::write(&config_path, new_config).context("Could not save config file")?;
+
+    return Ok(());
+}
+
 struct Config {
     api_token: String,
+    workspace_id: Option<u64>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    Start,
+    Start {
+        description: Option<String>,
+    },
     Stop,
     Status,
     Recent,
@@ -209,6 +292,11 @@ enum Command {
         #[arg(long)]
         token: String,
     },
+}
+
+#[derive(Debug, Deserialize)]
+struct UserData {
+    default_workspace_id: u64,
 }
 
 #[derive(Debug, Deserialize)]
