@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display, fs};
 
 use anyhow::{Context, Ok, Result};
-use chrono::Utc;
+use chrono::{Utc, Duration};
 use clap::{Parser, Subcommand};
 use directories::ProjectDirs;
 use reqwest::{
@@ -349,13 +349,29 @@ impl Display for TimeEntry {
         };
         write!(f, "{}: {} - {}", description, &self.start, stop)?;
 
-        let duration = &self.duration;
+        let duration = Duration::seconds(self.duration);
         if let Some(_) = &self.stop {
-            write!(f, " - {} seconds", duration)?;
+            write!(f, " - {}", format_duration(&duration))?;
         }
         return write!(f, "");
     }
 }
+
+fn format_duration(duration: &Duration) -> String {
+    let mut result = String::new();
+    let hours = duration.num_hours();
+    if hours > 0 {
+        let hours_part = format!("{} h ", hours);
+        result += hours_part.as_str();
+    }
+
+    let minutes = duration.num_minutes() % 60;
+    let minutes_part = format!("{} min", minutes);
+    result += minutes_part.as_str();
+
+    return result;
+}
+
 
 fn default_if_empty<'a>(text: &'a String, default: &'a String) -> &'a String {
     if text.is_empty() {
