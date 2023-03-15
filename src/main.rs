@@ -1,7 +1,7 @@
-use std::{collections::HashMap, fmt::Display, fs};
+use std::{collections::HashMap, fmt::Display, fs, path::PathBuf};
 
-use anyhow::{Context, Ok, Result};
-use chrono::{Utc, Duration};
+use anyhow::{anyhow, Context, Ok, Result};
+use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use directories::ProjectDirs;
 use reqwest::{
@@ -23,13 +23,20 @@ fn main() -> Result<()> {
 
     if let Some(Command::Login { ref token }) = args.command {
         set_api_token(token)?;
-        let config = read_config()?;
+        let config = get_config()?;
         let client = TogglClient::new(config)?;
         set_workspace_id(client.get_default_workspace_id()?)?;
         return Ok(());
     }
 
-    let config = read_config()?;
+    let config = get_config()?;
+    if let Config {
+        api_token: None,
+        workspace_id: _,
+    } = config
+    {
+        return Err(anyhow!("Missing API token. Use login command to set it"));
+    }
     let client = TogglClient::new(config)?;
 
     match args.command {
@@ -65,7 +72,7 @@ impl TogglClient {
     fn request(&self, method: Method, path: String) -> RequestBuilder {
         self.client
             .request(method, (&self.base_url).to_string() + &path)
-            .basic_auth(&self.config.api_token, Some("api_token"))
+            .basic_auth(&self.config.api_token.as_ref().unwrap(), Some("api_token"))
             .header(CONTENT_TYPE, "application/json")
     }
 
@@ -183,100 +190,108 @@ impl TogglClient {
     }
 }
 
-fn read_config() -> Result<Config> {
+fn get_config_dir<'a>() -> Result<PathBuf> {
     let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
         .context("Could not retrieve home directory")?;
-    let env_file = fs::read_to_string(dirs.config_dir().join("config"))
+
+    let config_dir = dirs.config_dir();
+
+    let exists = config_dir
+        .try_exists()
+        .context("Could not access config directory")?;
+    if !exists {
+        fs::create_dir_all(config_dir)?;
+    }
+    return Ok(config_dir.to_owned());
+}
+
+fn get_config() -> Result<Config> {
+    let config_dir = get_config_dir()?;
+    let config_path = config_dir.join("config");
+
+    let config_exists = config_path
+        .try_exists()
+        .context("Couldn't read a config file")?;
+
+    if !config_exists {
+        return Ok(Config::default());
+    }
+
+    let config = fs::read_to_string(config_path)
         .context("Config file not found. Please use login command to set API token.")?;
-    let variables: HashMap<&str, &str> = env_file
+
+    let parsed_config: HashMap<&str, &str> = config
         .lines()
         .filter_map(|line| line.split_once("="))
         .collect();
-    let api_token = variables
-        .get("API_TOKEN")
-        .context("API token not set. Please use login command to set it.")?;
 
-    let workspace_id = variables
+    let api_token = parsed_config
+        .get("API_TOKEN")
+        .map(|value| value.to_string());
+
+    let workspace_id = parsed_config
         .get("DEFAULT_WORKSPACE_ID")
         .map(|id| id.parse::<u64>().context("Could not parse workspace_id"))
         .transpose()?;
 
     return Ok(Config {
-        api_token: api_token.to_string(),
+        api_token,
         workspace_id,
     });
 }
 
 fn set_api_token(api_token: &str) -> Result<()> {
-    let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
-        .context("Could not retrieve home directory")?;
+    let mut config = get_config()?;
+    config.api_token = Some(api_token.to_string());
 
-    let config_dir = dirs.config_dir();
-    if !config_dir.exists() {
-        fs::create_dir_all(config_dir)?;
-    }
-
-    let config_path = config_dir.join("config");
-    let content = if config_path.exists() {
-        fs::read_to_string(&config_path)?
-    } else {
-        "".to_string()
-    };
-
-    let mut variables = content
-        .lines()
-        .filter_map(|line| line.split_once("="))
-        .collect::<HashMap<&str, &str>>();
-
-    variables.insert("API_TOKEN", api_token);
-    let new_config = variables
-        .iter()
-        .map(|(key, value)| String::new() + key + "=" + value)
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    fs::write(&config_path, new_config).context("Could not save config file")?;
+    save_config(&config)?;
 
     return Ok(());
 }
 
-fn set_workspace_id(workspace_id: u64) -> Result<()> {
-    let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
-        .context("Could not retrieve home directory")?;
+fn save_config(config: &Config) -> Result<()> {
+    let mut variables = HashMap::new();
 
-    let config_dir = dirs.config_dir();
-    if !config_dir.exists() {
-        fs::create_dir_all(config_dir)?;
+    if let Some(api_token) = &config.api_token {
+        variables.insert("API_TOKEN", api_token.to_owned());
+    }
+    if let Some(ref workspace_id) = &config.workspace_id {
+        variables.insert("DEFAULT_WORKSPACE_ID", workspace_id.to_string());
     }
 
-    let config_path = config_dir.join("config");
-    let content = if config_path.exists() {
-        fs::read_to_string(&config_path)?
-    } else {
-        "".to_string()
-    };
-
-    let mut variables = content
-        .lines()
-        .filter_map(|line| line.split_once("="))
-        .collect::<HashMap<&str, &str>>();
-
-    let workspace_id = workspace_id.to_string();
-    variables.insert("DEFAULT_WORKSPACE_ID", &workspace_id);
     let new_config = variables
         .iter()
         .map(|(key, value)| String::new() + key + "=" + value)
         .collect::<Vec<_>>()
         .join("\n");
 
+    let config_dir = get_config_dir()?;
+    let config_path = config_dir.join("config");
     fs::write(&config_path, new_config).context("Could not save config file")?;
+    return Ok(());
+}
+
+fn set_workspace_id(workspace_id: u64) -> Result<()> {
+    let mut config = get_config()?;
+    config.workspace_id = Some(workspace_id);
+
+    save_config(&config)?;
 
     return Ok(());
 }
 
 struct Config {
-    api_token: String,
+    api_token: Option<String>,
     workspace_id: Option<u64>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        return Config {
+            api_token: None,
+            workspace_id: None,
+        };
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -371,7 +386,6 @@ fn format_duration(duration: &Duration) -> String {
 
     return result;
 }
-
 
 fn default_if_empty<'a>(text: &'a String, default: &'a String) -> &'a String {
     if text.is_empty() {
