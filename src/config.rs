@@ -1,20 +1,20 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use anyhow::{Context, Result};
 use directories::ProjectDirs;
-use anyhow::{Result, Context};
+use std::{collections::HashMap, fs, path::PathBuf};
 
-fn get_config_dir<'a>() -> Result<PathBuf> {
+fn get_config_dir() -> Result<PathBuf> {
     let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
         .context("Could not retrieve home directory")?;
 
-    let config_dir = dirs.config_dir();
+    let config_dir = dirs.config_dir().to_owned();
 
     let exists = config_dir
         .try_exists()
         .context("Could not access config directory")?;
     if !exists {
-        fs::create_dir_all(config_dir)?;
+        fs::create_dir_all(&config_dir)?;
     }
-    return Ok(config_dir.to_owned());
+    return Ok(config_dir);
 }
 
 pub fn get_config() -> Result<Config> {
@@ -56,9 +56,7 @@ pub fn set_api_token(api_token: &str) -> Result<()> {
     let mut config = get_config()?;
     config.api_token = Some(api_token.to_string());
 
-    save_config(&config)?;
-
-    return Ok(());
+    return save_config(&config);
 }
 
 fn save_config(config: &Config) -> Result<()> {
@@ -73,7 +71,7 @@ fn save_config(config: &Config) -> Result<()> {
 
     let new_config = variables
         .iter()
-        .map(|(key, value)| String::new() + key + "=" + value)
+        .map(|(key, value)| format!("{}={}", key, value))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -87,9 +85,7 @@ pub fn set_workspace_id(workspace_id: u64) -> Result<()> {
     let mut config = get_config()?;
     config.workspace_id = Some(workspace_id);
 
-    save_config(&config)?;
-
-    return Ok(());
+    return save_config(&config);
 }
 
 pub struct Config {
