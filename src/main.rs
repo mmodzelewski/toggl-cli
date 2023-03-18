@@ -6,20 +6,22 @@ mod config;
 use anyhow::{anyhow, Ok, Result};
 use args::{Args, Command};
 use clap::Parser;
+use config::Config;
 use toggl_client::TogglClient;
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
     if let Some(Command::Login { ref token }) = args.command {
-        config::set_api_token(token)?;
-        let config = config::get_config()?;
-        let client = TogglClient::new(config)?;
-        config::set_workspace_id(client.get_default_workspace_id()?)?;
+        let mut config = Config::load()?;
+        config.set_api_token(token);
+        let client = TogglClient::new(config.clone())?;
+        config.set_workspace_id(client.get_default_workspace_id()?);
+        config.save()?;
         return Ok(());
     }
 
-    let config = config::get_config()?;
+    let config = Config::load()?;
     if let config::Config {
         api_token: None,
         workspace_id: _,
