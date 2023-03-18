@@ -88,16 +88,8 @@ pub fn set_workspace_id(workspace_id: u64) -> Result<()> {
     return save_config(&config);
 }
 
+#[derive(Default)]
 pub struct Config {
     pub api_token: Option<String>,
     pub workspace_id: Option<u64>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        return Config {
-            api_token: None,
-            workspace_id: None,
-        };
-    }
 }
