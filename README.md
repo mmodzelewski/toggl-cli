@@ -63,5 +63,5 @@ toggl-cli recent
 ```
 
 ## Current limitations
-- When starting a time entry it is not possible to specify project or tags.
+- When starting a time entry it is not possible to specify tags.
 - All operations are in a context of default user's workspace. There is no option to change that at the moment.

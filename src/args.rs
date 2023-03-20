@@ -11,6 +11,8 @@ pub struct Args {
 pub enum Command {
     Start {
         description: Option<String>,
+        #[arg(long, short)]
+        project_id: Option<u64>,
     },
     Stop,
     Status,

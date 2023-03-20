@@ -109,7 +109,7 @@ impl TogglClient {
         return Ok(());
     }
 
-    pub fn start(&self, description: Option<String>) -> Result<()> {
+    pub fn start(&self, description: Option<String>, project_id: Option<u64>) -> Result<()> {
         let now = Utc::now();
         let workspace_id = self
             .config
@@ -119,7 +119,7 @@ impl TogglClient {
             workspace_id,
             created_with: "toggl-cli".to_string(),
             description,
-            project_id: None,
+            project_id,
             start: format!("{:?}", now),
             duration: -1 * now.timestamp(),
         };
