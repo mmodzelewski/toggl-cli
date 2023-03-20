@@ -16,6 +16,7 @@ pub enum Command {
     Status,
     Recent,
     Restart,
+    Projects,
     Login {
         #[arg(long)]
         token: String,

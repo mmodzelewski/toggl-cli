@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use reqwest::{
     blocking::{Client, RequestBuilder},
@@ -145,6 +145,22 @@ impl TogglClient {
             .map(|data| data.default_workspace_id)
             .context("Could not get user data");
     }
+
+    pub fn print_projects(&self) -> Result<()> {
+        self.request(Method::GET, "me/projects".to_string())
+            .send()?
+            .json::<Vec<Project>>()
+            .context("Could not get projects")?
+            .iter()
+            .for_each(|project| println!("[{}] {}", project.id, project.name));
+        return Ok(());
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct Project {
+    id: u64,
+    name: String,
 }
 
 #[derive(Debug, Deserialize)]

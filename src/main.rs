@@ -38,6 +38,7 @@ fn main() -> Result<()> {
             Command::Status => client.print_current_entry()?,
             Command::Recent => client.print_recent_entries()?,
             Command::Restart => client.restart()?,
+            Command::Projects => client.print_projects()?,
             Command::Login { token: _ } => unreachable!(),
         },
         None => client.print_recent_entries()?,
