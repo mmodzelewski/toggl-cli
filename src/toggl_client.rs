@@ -119,7 +119,7 @@ impl TogglClient {
             workspace_id,
             created_with: "toggl-cli".to_string(),
             description,
-            project_id,
+            project_id: project_id.or_else(|| self.config.project_id),
             start: format!("{:?}", now),
             duration: -1 * now.timestamp(),
         };

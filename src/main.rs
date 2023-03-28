@@ -1,7 +1,6 @@
 mod args;
-mod toggl_client;
 mod config;
-
+mod toggl_client;
 
 use anyhow::{anyhow, Ok, Result};
 use args::{Args, Command};
@@ -25,6 +24,7 @@ fn main() -> Result<()> {
     if let config::Config {
         api_token: None,
         workspace_id: _,
+        project_id: _,
     } = config
     {
         return Err(anyhow!("Missing API token. Use login command to set it"));
@@ -33,7 +33,10 @@ fn main() -> Result<()> {
 
     match args.command {
         Some(command) => match command {
-            Command::Start { description, project_id } => client.start(description, project_id)?,
+            Command::Start {
+                description,
+                project_id,
+            } => client.start(description, project_id)?,
             Command::Stop => client.stop_current_entry()?,
             Command::Status => client.print_current_entry()?,
             Command::Recent => client.print_recent_entries()?,
@@ -46,5 +49,3 @@ fn main() -> Result<()> {
 
     return Ok(());
 }
-
-
