@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::{Duration, Utc};
 use reqwest::{
     blocking::{Client, RequestBuilder},
@@ -26,11 +26,17 @@ impl TogglClient {
         });
     }
 
-    fn request(&self, method: Method, path: String) -> RequestBuilder {
-        self.client
+    fn request(&self, method: Method, path: String) -> Result<RequestBuilder> {
+        if self.config.api_token.is_none() {
+            return Err(anyhow!("Missing API token. Use login command to set it"));
+        }
+        let builder = self
+            .client
             .request(method, (&self.base_url).to_string() + &path)
             .basic_auth(&self.config.api_token.as_ref().unwrap(), Some("api_token"))
-            .header(CONTENT_TYPE, "application/json")
+            .header(CONTENT_TYPE, "application/json");
+
+        return Ok(builder);
     }
 
     pub fn print_recent_entries(&self) -> Result<()> {
@@ -44,7 +50,7 @@ impl TogglClient {
 
     fn get_recent_entries(&self) -> Result<Vec<TimeEntry>> {
         return self
-            .request(Method::GET, "me/time_entries".to_string())
+            .request(Method::GET, "me/time_entries".to_string())?
             .send()?
             .json()
             .context("Could not get time entries");
@@ -63,7 +69,7 @@ impl TogglClient {
 
     fn get_current_entry(&self) -> Result<Option<TimeEntry>> {
         return self
-            .request(Method::GET, "me/time_entries/current".to_string())
+            .request(Method::GET, "me/time_entries/current".to_string())?
             .send()?
             .json()
             .context("Could not get time entry");
@@ -79,7 +85,7 @@ impl TogglClient {
                         "workspaces/{}/time_entries/{}/stop",
                         time_entry.workspace_id, time_entry.id
                     ),
-                )
+                )?
                 .send()?
                 .json()
                 .context("Could not stop the current time entry")?;
@@ -97,7 +103,7 @@ impl TogglClient {
                 .request(
                     Method::POST,
                     format!("workspaces/{}/time_entries", last_one.workspace_id),
-                )
+                )?
                 .json(&new_time_entry)
                 .send()?
                 .json()
@@ -128,7 +134,7 @@ impl TogglClient {
             .request(
                 Method::POST,
                 format!("workspaces/{}/time_entries", workspace_id),
-            )
+            )?
             .json(&new_time_entry)
             .send()?
             .json()
@@ -139,7 +145,7 @@ impl TogglClient {
 
     pub fn get_default_workspace_id(&self) -> Result<u64> {
         return self
-            .request(Method::GET, "me".to_string())
+            .request(Method::GET, "me".to_string())?
             .send()?
             .json::<UserData>()
             .map(|data| data.default_workspace_id)
@@ -147,7 +153,7 @@ impl TogglClient {
     }
 
     pub fn print_projects(&self) -> Result<()> {
-        self.request(Method::GET, "me/projects".to_string())
+        self.request(Method::GET, "me/projects".to_string())?
             .send()?
             .json::<Vec<Project>>()
             .context("Could not get projects")?
