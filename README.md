@@ -5,6 +5,7 @@ toggl-cli is a command-line interface (CLI) tool for managing [Toggl Track](http
 ## Features
 
 - Set an API key
+- Set default workspace id and default project id globally and modify in directories
 - Start a new time entry with a given description
 - Stop currently running time entry
 - Restart the latest time entry
@@ -37,7 +38,7 @@ cargo install --git https://github.com/mmodzelewski/toggl-cli
 To use toggl-cli, you'll need to provide your Toggl Track API token. You can find it in [Profile settings](https://track.toggl.com/profile) on Toggl Track.
 
 ```sh
-toggl-cli login --token [API TOKEN]
+toggl-cli --global set --api-token [API TOKEN]
 ```
 
 The token will be saved in a config directory `~/.config/togglcli`.
@@ -62,6 +63,17 @@ toggl-cli restart
 toggl-cli recent
 ```
 
+### Set default project
+Global setting
+```sh
+toggl-cli --global --project-id [PROJECT ID]
+```
+
+Setting in a current directory
+```sh
+toggl-cli --project-id [PROJECT ID]
+```
+
 ## Current limitations
 - When starting a time entry it is not possible to specify tags.
-- All operations are in a context of default user's workspace. There is no option to change that at the moment.
+
