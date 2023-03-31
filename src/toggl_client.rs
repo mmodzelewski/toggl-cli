@@ -152,6 +152,13 @@ impl TogglClient {
             .context("Could not get user data");
     }
 
+    pub fn print_default_workspace_id(&self) -> Result<()> {
+        let id = self.get_default_workspace_id()?;
+        println!("Workspace id {}", id);
+        return Ok(());
+    }
+
+
     pub fn print_projects(&self) -> Result<()> {
         self.request(Method::GET, "me/projects".to_string())?
             .send()?

@@ -1,17 +1,18 @@
 mod args;
 mod config;
+mod dirs;
 mod toggl_client;
 
 use anyhow::{Ok, Result};
 use args::{Args, Command};
 use clap::Parser;
-use config::Config;
+use config::{load_config, update_config, Config};
 use toggl_client::TogglClient;
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let config = Config::load()?;
+    let config = load_config()?;
     let client = TogglClient::new(config)?;
 
     match args.command {
@@ -25,19 +26,22 @@ fn main() -> Result<()> {
             Command::Recent => client.print_recent_entries()?,
             Command::Restart => client.restart()?,
             Command::Projects => client.print_projects()?,
-            Command::Login { ref token } => login(token)?,
+            Command::DefaultWorkspaceId => client.print_default_workspace_id()?,
+            Command::Set {
+                project_id,
+                workspace_id,
+                api_token,
+            } => update_config(
+                args.global,
+                Config {
+                    api_token,
+                    workspace_id,
+                    project_id,
+                },
+            )?,
         },
         None => client.print_recent_entries()?,
     }
 
-    return Ok(());
-}
-
-fn login(token: &String) -> Result<()> {
-    let mut config = Config::load()?;
-    config.set_api_token(token);
-    let client = TogglClient::new(config.clone())?;
-    config.set_workspace_id(client.get_default_workspace_id()?);
-    config.save()?;
     return Ok(());
 }

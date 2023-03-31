@@ -1,20 +1,50 @@
-use anyhow::{Context, Result};
-use directories::ProjectDirs;
-use std::{collections::HashMap, env, fs, path::PathBuf};
+use anyhow::{Context, Error, Ok, Result};
+use std::{collections::HashMap, fmt::Display, fs, str::FromStr};
 
-fn get_config_dir() -> Result<PathBuf> {
-    let dirs = ProjectDirs::from("dev", "Modzelewski", "Toggl Cli")
-        .context("Could not retrieve home directory")?;
+use crate::dirs::{find_global_config_dir, find_local_config, get_current_dir};
 
-    let config_dir = dirs.config_dir().to_owned();
-
-    let exists = config_dir
-        .try_exists()
-        .context("Could not access config directory")?;
-    if !exists {
-        fs::create_dir_all(&config_dir)?;
+pub fn load_config() -> Result<Config> {
+    let config = load_global_config()?;
+    if config.is_none() {
+        return Ok(Config::default());
     }
-    return Ok(config_dir);
+    let config = config.unwrap();
+
+    let local_config = load_local_config()?;
+
+    return Ok(Config {
+        api_token: local_config
+            .clone()
+            .and_then(|lc| lc.api_token)
+            .or(config.api_token),
+        workspace_id: local_config
+            .clone()
+            .and_then(|lc| lc.workspace_id)
+            .or(config.workspace_id),
+        project_id: local_config
+            .clone()
+            .and_then(|lc| lc.project_id)
+            .or(config.project_id),
+    });
+}
+
+pub fn update_config(global: bool, new_config: Config) -> Result<()> {
+    if global {
+        let mut config = load_global_config()?.unwrap_or_default();
+        config.update_api_token(new_config.api_token);
+        config.update_project_id(new_config.project_id);
+        config.update_workspace_id(new_config.workspace_id);
+        save_global_config(&config)?;
+    } else {
+        let mut config = load_current_dir_config()?.unwrap_or_default();
+        if new_config.api_token.is_some() {
+            println!("API token can only be set globally. Use --global option.");
+        }
+        config.update_project_id(new_config.project_id);
+        config.update_workspace_id(new_config.workspace_id);
+        save_current_dir_config(&config)?;
+    }
+    return Ok(());
 }
 
 #[derive(Default, Clone)]
@@ -25,75 +55,42 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn set_api_token(&mut self, api_token: &str) {
-        self.api_token = Some(api_token.to_string());
-    }
-
-    pub fn set_workspace_id(&mut self, workspace_id: u64) {
-        self.workspace_id = Some(workspace_id);
-    }
-
-    pub fn load() -> Result<Config> {
-        let config_dir = get_config_dir()?;
-        let config_path = config_dir.join("config");
-
-        let config_exists = config_path
-            .try_exists()
-            .context("Couldn't read a config file")?;
-
-        let local_config = Config::load_local();
-
-        if !config_exists {
-            if local_config.is_none() {
-                return Ok(Config::default());
-            } else {
-                return Ok(local_config.unwrap());
-            }
+    pub fn update_api_token(&mut self, api_token: Option<String>) {
+        if api_token.is_some() {
+            self.api_token = api_token;
         }
-
-        return Config::parse_config(config_path).map(|conf| Config {
-            api_token: local_config
-                .clone()
-                .and_then(|lc| lc.api_token)
-                .or(conf.api_token),
-            workspace_id: local_config
-                .clone()
-                .and_then(|lc| lc.workspace_id)
-                .or(conf.workspace_id),
-            project_id: local_config
-                .clone()
-                .and_then(|lc| lc.project_id)
-                .or(conf.project_id),
-        });
     }
 
-    fn load_local() -> Option<Config> {
-        return Config::find_local_config_dir()
-            .map(|path| Config::parse_config(path))
-            .transpose()
-            .ok()
-            .flatten();
+    pub fn update_workspace_id(&mut self, workspace_id: Option<u64>) {
+        if workspace_id.is_some() {
+            self.workspace_id = workspace_id;
+        }
     }
 
-    fn parse_config(path: PathBuf) -> Result<Config> {
-        let config = fs::read_to_string(path)
-            .context("Config file not found. Please use login command to set API token.")?;
+    pub fn update_project_id(&mut self, project_id: Option<u64>) {
+        if project_id.is_some() {
+            self.project_id = project_id;
+        }
+    }
+}
 
-        let parsed_config: HashMap<&str, &str> = config
+impl FromStr for Config {
+    type Err = Error;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        let config: HashMap<&str, &str> = value
             .lines()
             .filter_map(|line| line.split_once("="))
             .collect();
 
-        let api_token = parsed_config
-            .get("API_TOKEN")
-            .map(|value| value.to_string());
+        let api_token = config.get("API_TOKEN").map(|value| value.to_string());
 
-        let workspace_id = parsed_config
+        let workspace_id = config
             .get("WORKSPACE_ID")
             .map(|id| id.parse::<u64>().context("Could not parse workspace_id"))
             .transpose()?;
 
-        let project_id = parsed_config
+        let project_id = config
             .get("PROJECT_ID")
             .map(|id| id.parse::<u64>().context("Could not parse project_id"))
             .transpose()?;
@@ -104,46 +101,10 @@ impl Config {
             project_id,
         });
     }
+}
 
-    fn find_local_config_dir() -> Option<PathBuf> {
-        let start = env::current_dir().ok();
-        if start.is_none() {
-            return None;
-        }
-        let start = start.unwrap();
-
-        let user_dirs = directories::UserDirs::new();
-        if user_dirs.is_none() {
-            return None;
-        }
-        let home = user_dirs.unwrap().home_dir().to_owned();
-
-        if !start.starts_with(&home) {
-            return None;
-        }
-
-        let mut current = start;
-        let mut found: Option<PathBuf> = None;
-
-        loop {
-            let path = current.join(".toggl");
-            let exists = path.try_exists().ok().unwrap_or(false);
-            if exists {
-                found = Some(path);
-                break;
-            }
-
-            if current == home {
-                break;
-            }
-
-            current.pop();
-        }
-
-        return found;
-    }
-
-    pub fn save(self: &Config) -> Result<()> {
+impl Display for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut variables = HashMap::new();
 
         if let Some(api_token) = &self.api_token {
@@ -152,6 +113,9 @@ impl Config {
         if let Some(ref workspace_id) = &self.workspace_id {
             variables.insert("WORKSPACE_ID", workspace_id.to_string());
         }
+        if let Some(ref project_id) = &self.project_id {
+            variables.insert("PROJECT_ID", project_id.to_string());
+        }
 
         let new_config = variables
             .iter()
@@ -159,9 +123,65 @@ impl Config {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let config_dir = get_config_dir()?;
-        let config_path = config_dir.join("config");
-        fs::write(&config_path, new_config).context("Could not save config file")?;
-        return Ok(());
+        return write!(f, "{}", new_config);
     }
+}
+
+fn load_global_config() -> Result<Option<Config>> {
+    let config_dir = find_global_config_dir()?;
+    let config_path = config_dir.join("config");
+    let config_exists = config_path
+        .try_exists()
+        .context("Couldn't read a global config file")?;
+    if !config_exists {
+        return Ok(None);
+    }
+
+    let config = fs::read_to_string(config_path)
+        .context("Couldn't read global config file.")?
+        .parse::<Config>()
+        .context("Couldn't parse global config file")?;
+    return Ok(Some(config));
+}
+
+fn save_global_config(config: &Config) -> Result<()> {
+    let config_dir = find_global_config_dir()?;
+    let config_path = config_dir.join("config");
+    fs::write(&config_path, config.to_string()).context("Could not save config file")?;
+    return Ok(());
+}
+
+fn load_local_config() -> Result<Option<Config>> {
+    return find_local_config(".toggl")?
+        .map(|path| {
+            fs::read_to_string(path)
+                .context("Couldn't read config file")
+                .and_then(|value| {
+                    value
+                        .parse::<Config>()
+                        .context("Couldn't parse config file")
+                })
+        })
+        .transpose();
+}
+
+fn load_current_dir_config() -> Result<Option<Config>> {
+    let current_dir = get_current_dir()?;
+    let config_path = current_dir.join(".toggl");
+    let exists = config_path.try_exists()?;
+    if !exists {
+        return Ok(None);
+    }
+    let config = fs::read_to_string(config_path)
+        .context("Couldn't read config file")?
+        .parse::<Config>()
+        .context("Couldn't parse config file")?;
+    return Ok(Some(config));
+}
+
+fn save_current_dir_config(config: &Config) -> Result<()> {
+    let config_dir = get_current_dir()?;
+    let config_path = config_dir.join(".toggl");
+    fs::write(&config_path, config.to_string()).context("Could not save config file")?;
+    return Ok(());
 }

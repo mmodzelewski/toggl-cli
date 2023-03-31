@@ -3,6 +3,9 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
+    #[arg(long)]
+    pub global: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -19,8 +22,13 @@ pub enum Command {
     Recent,
     Restart,
     Projects,
-    Login {
-        #[arg(long)]
-        token: String,
+    DefaultWorkspaceId,
+    Set {
+        #[arg(long, short)]
+        project_id: Option<u64>,
+        #[arg(long, short)]
+        workspace_id: Option<u64>,
+        #[arg(long, short)]
+        api_token: Option<String>,
     },
 }
