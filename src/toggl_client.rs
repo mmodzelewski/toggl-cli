@@ -1,7 +1,7 @@
-use std::fmt::Display;
+use std::{fmt::Display, str::FromStr};
 
 use anyhow::{anyhow, Context, Result};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Local, Utc};
 use reqwest::{
     blocking::{Client, RequestBuilder},
     header::CONTENT_TYPE,
@@ -41,8 +41,47 @@ impl TogglClient {
 
     pub fn print_recent_entries(&self) -> Result<()> {
         let time_entries = self.get_recent_entries()?;
-        for time_entry in time_entries {
+        let today = Local::now().date_naive();
+        let today_entries = time_entries
+            .iter()
+            .filter(|entry| parse_date_time(&entry.start).unwrap().date_naive() == today)
+            .collect::<Vec<_>>();
+
+        if today_entries.len() > 0 {
+            print!(" -- Today -- ");
+            let total = today_entries
+                .iter()
+                .map(|entry| {
+                    if entry.stop.is_some() {
+                        entry.duration
+                    } else {
+                        Utc::now().timestamp() - parse_date_time(&entry.start).unwrap().timestamp()
+                    }
+                })
+                .sum::<i64>();
+            let duration = Duration::seconds(total);
+            println!(
+                "⌛{} hours {:02} minutes",
+                duration.num_hours(),
+                duration.num_minutes()
+            );
+        }
+
+        for time_entry in today_entries {
             println!("{}", time_entry);
+        }
+
+        let older_entries = time_entries
+            .iter()
+            .filter(|entry| parse_date_time(&entry.start).unwrap().date_naive() != today)
+            .take(10)
+            .collect::<Vec<_>>();
+
+        if older_entries.len() > 0 {
+            println!(" -- Older -- ");
+            for time_entry in older_entries {
+                println!("{}", time_entry);
+            }
         }
 
         return Ok(());
@@ -158,7 +197,6 @@ impl TogglClient {
         return Ok(());
     }
 
-
     pub fn print_projects(&self) -> Result<()> {
         self.request(Method::GET, "me/projects".to_string())?
             .send()?
@@ -224,19 +262,32 @@ impl Display for TimeEntry {
             None => &empty_description,
         };
 
+        let start = parse_date_time(&self.start).unwrap();
+
         let still_running = "in progress".to_string();
-        let stop = match &self.stop {
-            Some(time) => time,
-            None => &still_running,
-        };
-        write!(f, "{}: {} - {}", description, &self.start, stop)?;
+        let stop = self
+            .stop
+            .as_ref()
+            .map(|value| parse_date_time(&value).unwrap())
+            .map(|value| format_time(&value))
+            .unwrap_or(still_running);
+
+        write!(f, "{} - {}", format_time(&start), stop)?;
+
+        if let Some(day) = format_date(&start) {
+            write!(f, " {}", day)?;
+        }
 
         let duration = Duration::seconds(self.duration);
         if let Some(_) = &self.stop {
-            write!(f, " - {}", format_duration(&duration))?;
+            write!(f, " ({})", format_duration(&duration))?;
         }
-        return write!(f, "");
+        return write!(f, "\t{}", description);
     }
+}
+
+fn parse_date_time(datetime: &str) -> Result<DateTime<Local>> {
+    return DateTime::<Local>::from_str(datetime).context("Could not parse date time");
 }
 
 fn format_duration(duration: &Duration) -> String {
@@ -252,6 +303,20 @@ fn format_duration(duration: &Duration) -> String {
     result += minutes_part.as_str();
 
     return result;
+}
+
+fn format_date(datetime: &DateTime<Local>) -> Option<String> {
+    if datetime.date_naive() == Local::now().date_naive() {
+        return None;
+    }
+    if datetime.date_naive() == Local::now().date_naive().pred_opt().unwrap() {
+        return Some("yesterday".to_string());
+    }
+    return Some(datetime.format("%d %b").to_string());
+}
+
+fn format_time(datetime: &DateTime<Local>) -> String {
+    return datetime.format("%H:%M").to_string();
 }
 
 fn default_if_empty<'a>(text: &'a String, default: &'a String) -> &'a String {
