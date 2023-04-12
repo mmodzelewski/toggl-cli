@@ -60,11 +60,9 @@ impl TogglClient {
                 })
                 .sum::<i64>();
             let duration = Duration::seconds(total);
-            println!(
-                "⌛{} hours {:02} minutes",
-                duration.num_hours(),
-                duration.num_minutes()
-            );
+            let hours = duration.num_hours();
+            let minutes = duration.num_minutes() - hours * 60;
+            println!("⌛{} hours {:02} minutes", hours, minutes);
         }
 
         for time_entry in today_entries {
