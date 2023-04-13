@@ -1,12 +1,13 @@
+mod api_client;
 mod args;
 mod config;
 mod dirs;
 mod toggl_client;
-mod api_client;
 
 use anyhow::{Ok, Result};
 use args::{Args, Command};
 use clap::Parser;
+
 use config::{load_config, update_config, Config};
 use toggl_client::TogglClient;
 
@@ -18,6 +19,9 @@ fn main() -> Result<()> {
 
     match args.command {
         Some(command) => match command {
+            Command::Completions { shell } => {
+                Args::print_completions(shell);
+            }
             Command::Start {
                 description,
                 project_id,
@@ -29,11 +33,12 @@ fn main() -> Result<()> {
             Command::Projects => client.print_projects()?,
             Command::DefaultWorkspaceId => client.print_default_workspace_id()?,
             Command::Set {
+                global,
                 project_id,
                 workspace_id,
                 api_token,
             } => update_config(
-                args.global,
+                global,
                 Config {
                     api_token,
                     workspace_id,

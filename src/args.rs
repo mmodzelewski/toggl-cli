@@ -1,34 +1,70 @@
-use clap::{Parser, Subcommand};
+use clap::CommandFactory;
+use clap::{Parser, Subcommand, ValueHint};
+use clap_complete::generate;
+use clap_complete::Shell;
+use std::io;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    #[arg(long)]
-    pub global: bool,
-
     #[command(subcommand)]
     pub command: Option<Command>,
 }
 
+impl Args {
+    pub fn print_completions(shell: Shell) {
+        let mut cmd = Args::command();
+        let cmd: &mut clap::Command = &mut cmd;
+        generate(shell, cmd, cmd.get_name().to_string(), &mut io::stdout());
+    }
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    #[command(about = "Generate shell completions")]
+    Completions {
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+
+    #[command(about = "Start a new time entry")]
     Start {
+        #[arg(value_hint = ValueHint::Other)]
         description: Option<String>,
-        #[arg(long, short)]
+        #[arg(long, short, help = "Project id")]
         project_id: Option<u64>,
     },
+
+    #[command(about = "Stop the current time entry")]
     Stop,
+
+    #[command(about = "Print the current time entry")]
     Status,
+
+    #[command(about = "Print recent time entries")]
     Recent,
+
+    #[command(about = "Restart the last time entry")]
     Restart,
+
+    #[command(about = "List all projects")]
     Projects,
+
+    #[command(about = "Print the default workspace id")]
     DefaultWorkspaceId,
+
+    #[command(about = "Set configuration options")]
     Set {
-        #[arg(long, short)]
+        #[arg(long, help = "Set config globally")]
+        global: bool,
+
+        #[arg(long, short, help = "Set default project id")]
         project_id: Option<u64>,
-        #[arg(long, short)]
+
+        #[arg(long, short, help = "Set default workspace id")]
         workspace_id: Option<u64>,
-        #[arg(long, short)]
+
+        #[arg(long, short, value_hint = ValueHint::Other, help = "Set api token")]
         api_token: Option<String>,
     },
 }

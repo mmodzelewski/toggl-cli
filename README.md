@@ -81,6 +81,6 @@ toggl-cli --project-id [PROJECT ID]
 
 [] Save config in toml files
 [] Save API token in a keyring
-[] Add autocompletion
+[x] Add autocompletion
 [] Display project name when listing time entries
 
