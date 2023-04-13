@@ -2,6 +2,7 @@ mod args;
 mod config;
 mod dirs;
 mod toggl_client;
+mod api_client;
 
 use anyhow::{Ok, Result};
 use args::{Args, Command};
