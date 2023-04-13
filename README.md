@@ -77,3 +77,10 @@ toggl-cli --project-id [PROJECT ID]
 ## Current limitations
 - When starting a time entry it is not possible to specify tags.
 
+## To do
+
+[] Save config in toml files
+[] Save API token in a keyring
+[] Add autocompletion
+[] Display project name when listing time entries
+
