@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration, Local, Utc};
@@ -44,7 +44,7 @@ impl TogglClient {
         let today = Local::now().date_naive();
         let today_entries = time_entries
             .iter()
-            .filter(|entry| parse_date_time(&entry.start).unwrap().date_naive() == today)
+            .filter(|entry| entry.start.date_naive() == today)
             .collect::<Vec<_>>();
 
         if today_entries.len() > 0 {
@@ -55,7 +55,7 @@ impl TogglClient {
                     if entry.stop.is_some() {
                         entry.duration
                     } else {
-                        Utc::now().timestamp() - parse_date_time(&entry.start).unwrap().timestamp()
+                        Utc::now().timestamp() - entry.start.timestamp()
                     }
                 })
                 .sum::<i64>();
@@ -71,7 +71,7 @@ impl TogglClient {
 
         let older_entries = time_entries
             .iter()
-            .filter(|entry| parse_date_time(&entry.start).unwrap().date_naive() != today)
+            .filter(|entry| entry.start.date_naive() != today)
             .take(10)
             .collect::<Vec<_>>();
 
@@ -89,8 +89,13 @@ impl TogglClient {
         return self
             .request(Method::GET, "me/time_entries".to_string())?
             .send()?
-            .json()
-            .context("Could not get time entries");
+            .json::<Vec<TimeEntryDto>>()
+            .context("Could not get time entries")
+            .and_then(|vec| {
+                vec.into_iter()
+                    .map(|dto| TimeEntry::from_dto(&dto))
+                    .collect::<Result<Vec<TimeEntry>>>()
+            });
     }
 
     pub fn print_current_entry(&self) -> Result<()> {
@@ -108,14 +113,16 @@ impl TogglClient {
         return self
             .request(Method::GET, "me/time_entries/current".to_string())?
             .send()?
-            .json()
-            .context("Could not get time entry");
+            .json::<Option<TimeEntryDto>>()
+            .context("Could not get time entry")?
+            .map(|dto| TimeEntry::from_dto(&dto))
+            .transpose();
     }
 
     pub fn stop_current_entry(&self) -> Result<()> {
         let maybe_time_entry = self.get_current_entry()?;
         if let Some(time_entry) = maybe_time_entry {
-            let time_entry: TimeEntry = self
+            let time_entry: TimeEntryDto = self
                 .request(
                     Method::PATCH,
                     format!(
@@ -126,7 +133,7 @@ impl TogglClient {
                 .send()?
                 .json()
                 .context("Could not stop the current time entry")?;
-            println!("Stopped time entry: {}", time_entry)
+            println!("Stopped time entry: {}", TimeEntry::from_dto(&time_entry)?);
         }
         return Ok(());
     }
@@ -136,7 +143,7 @@ impl TogglClient {
         let maybe_last_one = recent_entries.first();
         if let Some(last_one) = maybe_last_one {
             let new_time_entry = NewTimeEntry::from_time_entry(last_one)?;
-            let stared_entry: TimeEntry = self
+            let stared_entry: TimeEntryDto = self
                 .request(
                     Method::POST,
                     format!("workspaces/{}/time_entries", last_one.workspace_id),
@@ -145,7 +152,10 @@ impl TogglClient {
                 .send()?
                 .json()
                 .context("Could not start a time entry")?;
-            println!("Time entry started: {}", stared_entry);
+            println!(
+                "Time entry started: {}",
+                TimeEntry::from_dto(&stared_entry)?
+            );
         } else {
             println!("No recent time entry to restart");
         }
@@ -167,7 +177,7 @@ impl TogglClient {
             duration: -1 * now.timestamp(),
         };
 
-        let stared_entry: TimeEntry = self
+        let stared_entry: TimeEntryDto = self
             .request(
                 Method::POST,
                 format!("workspaces/{}/time_entries", workspace_id),
@@ -176,7 +186,10 @@ impl TogglClient {
             .send()?
             .json()
             .context("Could not start a time entry")?;
-        println!("Time entry started: {}", stared_entry);
+        println!(
+            "Time entry started: {}",
+            TimeEntry::from_dto(&stared_entry)?
+        );
         return Ok(());
     }
 
@@ -218,13 +231,24 @@ struct UserData {
 }
 
 #[derive(Debug, Deserialize)]
-struct TimeEntry {
+struct TimeEntryDto {
     id: u64,
     workspace_id: u64,
     description: Option<String>,
     project_id: Option<u64>,
     start: String,
     stop: Option<String>,
+    duration: i64,
+}
+
+struct TimeEntry {
+    id: u64,
+    workspace_id: u64,
+    description: Option<String>,
+    project_id: Option<u64>,
+    project_name: Option<String>,
+    start: DateTime<Local>,
+    stop: Option<DateTime<Local>>,
     duration: i64,
 }
 
@@ -245,9 +269,24 @@ impl NewTimeEntry {
             workspace_id: time_entry.workspace_id,
             created_with: "toggl-cli".to_string(),
             description: time_entry.description.to_owned(),
-            project_id: time_entry.project_id.to_owned(),
+            project_id: time_entry.project_id,
             start: format!("{:?}", now),
             duration: -1 * now.timestamp(),
+        });
+    }
+}
+
+impl TimeEntry {
+    fn from_dto(dto: &TimeEntryDto) -> Result<TimeEntry> {
+        return Ok(TimeEntry {
+            id: dto.id,
+            workspace_id: dto.workspace_id,
+            description: dto.description.to_owned(),
+            project_id: dto.project_id,
+            project_name: None,
+            start: dto.start.parse()?,
+            stop: dto.stop.to_owned().map(|value| value.parse()).transpose()?,
+            duration: dto.duration,
         });
     }
 }
@@ -260,19 +299,16 @@ impl Display for TimeEntry {
             None => &empty_description,
         };
 
-        let start = parse_date_time(&self.start).unwrap();
-
         let still_running = "in progress".to_string();
         let stop = self
             .stop
             .as_ref()
-            .map(|value| parse_date_time(&value).unwrap())
             .map(|value| format_time(&value))
             .unwrap_or(still_running);
 
-        write!(f, "{} - {}", format_time(&start), stop)?;
+        write!(f, "{} - {}", format_time(&self.start), stop)?;
 
-        if let Some(day) = format_date(&start) {
+        if let Some(day) = format_date(&self.start) {
             write!(f, " {}", day)?;
         }
 
@@ -282,10 +318,6 @@ impl Display for TimeEntry {
         }
         return write!(f, "\t{}", description);
     }
-}
-
-fn parse_date_time(datetime: &str) -> Result<DateTime<Local>> {
-    return DateTime::<Local>::from_str(datetime).context("Could not parse date time");
 }
 
 fn format_duration(duration: &Duration) -> String {
