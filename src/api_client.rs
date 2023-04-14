@@ -1,15 +1,11 @@
-use std::fmt::Display;
-
 use anyhow::{anyhow, Context, Result};
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::Utc;
 use reqwest::{
     blocking::{Client, RequestBuilder},
     header::CONTENT_TYPE,
     Method,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::config::Config;
 
 const BASE_URL: &str = "https://api.track.toggl.com/api/v9/";
 
@@ -134,9 +130,9 @@ impl ApiClient {
 }
 
 #[derive(Debug, Deserialize)]
-struct Project {
-    id: u64,
-    name: String,
+pub struct Project {
+    pub id: u64,
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -145,14 +141,14 @@ struct UserData {
 }
 
 #[derive(Debug, Deserialize)]
-struct TimeEntryDto {
-    id: u64,
-    workspace_id: u64,
-    description: Option<String>,
-    project_id: Option<u64>,
-    start: String,
-    stop: Option<String>,
-    duration: i64,
+pub struct TimeEntryDto {
+    pub id: u64,
+    pub workspace_id: u64,
+    pub description: Option<String>,
+    pub project_id: Option<u64>,
+    pub start: String,
+    pub stop: Option<String>,
+    pub duration: i64,
 }
 
 #[derive(Serialize)]
@@ -178,4 +174,3 @@ impl NewTimeEntry {
         });
     }
 }
-

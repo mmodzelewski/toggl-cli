@@ -1,42 +1,24 @@
 use std::fmt::Display;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Local, Utc};
-use reqwest::{
-    blocking::{Client, RequestBuilder},
-    header::CONTENT_TYPE,
-    Method,
-};
-use serde::{Deserialize, Serialize};
 
-use crate::config::Config;
+use crate::{
+    api_client::{ApiClient, TimeEntryDto},
+    config::Config,
+};
 
 pub struct TogglClient {
-    base_url: String,
-    client: Client,
+    api_client: ApiClient,
     config: Config,
 }
 
 impl TogglClient {
     pub fn new(config: Config) -> Result<TogglClient> {
         return Ok(TogglClient {
-            base_url: "https://api.track.toggl.com/api/v9/".to_string(),
-            client: Client::new(),
+            api_client: ApiClient::new(config.api_token.as_deref())?,
             config,
         });
-    }
-
-    fn request(&self, method: Method, path: String) -> Result<RequestBuilder> {
-        if self.config.api_token.is_none() {
-            return Err(anyhow!("Missing API token. Use login command to set it"));
-        }
-        let builder = self
-            .client
-            .request(method, (&self.base_url).to_string() + &path)
-            .basic_auth(&self.config.api_token.as_ref().unwrap(), Some("api_token"))
-            .header(CONTENT_TYPE, "application/json");
-
-        return Ok(builder);
     }
 
     pub fn print_recent_entries(&self) -> Result<()> {
@@ -86,16 +68,11 @@ impl TogglClient {
     }
 
     fn get_recent_entries(&self) -> Result<Vec<TimeEntry>> {
-        return self
-            .request(Method::GET, "me/time_entries".to_string())?
-            .send()?
-            .json::<Vec<TimeEntryDto>>()
-            .context("Could not get time entries")
-            .and_then(|vec| {
-                vec.into_iter()
-                    .map(|dto| TimeEntry::from_dto(&dto))
-                    .collect::<Result<Vec<TimeEntry>>>()
-            });
+        return self.api_client.get_recent_entries().and_then(|vec| {
+            vec.into_iter()
+                .map(|dto| TimeEntry::from_dto(&dto))
+                .collect::<Result<Vec<TimeEntry>>>()
+        });
     }
 
     pub fn print_current_entry(&self) -> Result<()> {
@@ -111,179 +88,83 @@ impl TogglClient {
 
     fn get_current_entry(&self) -> Result<Option<TimeEntry>> {
         return self
-            .request(Method::GET, "me/time_entries/current".to_string())?
-            .send()?
-            .json::<Option<TimeEntryDto>>()
-            .context("Could not get time entry")?
+            .api_client
+            .get_current_entry()?
             .map(|dto| TimeEntry::from_dto(&dto))
             .transpose();
     }
 
     pub fn stop_current_entry(&self) -> Result<()> {
-        let maybe_time_entry = self.get_current_entry()?;
-        if let Some(time_entry) = maybe_time_entry {
-            let time_entry: TimeEntryDto = self
-                .request(
-                    Method::PATCH,
-                    format!(
-                        "workspaces/{}/time_entries/{}/stop",
-                        time_entry.workspace_id, time_entry.id
-                    ),
-                )?
-                .send()?
-                .json()
-                .context("Could not stop the current time entry")?;
-            println!("Stopped time entry: {}", TimeEntry::from_dto(&time_entry)?);
+        if let Some(stopped_entry) = self.api_client.stop_current_entry()? {
+            println!(
+                "Stopped time entry: {}",
+                TimeEntry::from_dto(&stopped_entry)?
+            );
+        } else {
+            println!("There are no active time entries");
         }
+
         return Ok(());
     }
 
     pub fn restart(&self) -> Result<()> {
-        let recent_entries = self.get_recent_entries()?;
-        let maybe_last_one = recent_entries.first();
-        if let Some(last_one) = maybe_last_one {
-            let new_time_entry = NewTimeEntry::from_time_entry(last_one)?;
-            let stared_entry: TimeEntryDto = self
-                .request(
-                    Method::POST,
-                    format!("workspaces/{}/time_entries", last_one.workspace_id),
-                )?
-                .json(&new_time_entry)
-                .send()?
-                .json()
-                .context("Could not start a time entry")?;
-            println!(
-                "Time entry started: {}",
-                TimeEntry::from_dto(&stared_entry)?
-            );
-        } else {
-            println!("No recent time entry to restart");
-        }
-        return Ok(());
-    }
-
-    pub fn start(&self, description: Option<String>, project_id: Option<u64>) -> Result<()> {
-        let now = Utc::now();
-        let workspace_id = self
-            .config
-            .workspace_id
-            .context("workspace id should be set")?;
-        let new_time_entry = NewTimeEntry {
-            workspace_id,
-            created_with: "toggl-cli".to_string(),
-            description,
-            project_id: project_id.or_else(|| self.config.project_id),
-            start: format!("{:?}", now),
-            duration: -1 * now.timestamp(),
-        };
-
-        let stared_entry: TimeEntryDto = self
-            .request(
-                Method::POST,
-                format!("workspaces/{}/time_entries", workspace_id),
-            )?
-            .json(&new_time_entry)
-            .send()?
-            .json()
-            .context("Could not start a time entry")?;
+        let started_entry = self.api_client.restart()?;
         println!(
             "Time entry started: {}",
-            TimeEntry::from_dto(&stared_entry)?
+            TimeEntry::from_dto(&started_entry)?
         );
         return Ok(());
     }
 
-    pub fn get_default_workspace_id(&self) -> Result<u64> {
-        return self
-            .request(Method::GET, "me".to_string())?
-            .send()?
-            .json::<UserData>()
-            .map(|data| data.default_workspace_id)
-            .context("Could not get user data");
+    pub fn start(&self, description: Option<String>, project_id: Option<u64>) -> Result<()> {
+        let workspace_id = self
+            .config
+            .workspace_id
+            .context("workspace id should be set")?;
+        let started_entry = self
+            .api_client
+            .start(workspace_id, description, project_id)?;
+        println!(
+            "Time entry started: {}",
+            TimeEntry::from_dto(&started_entry)?
+        );
+        return Ok(());
     }
 
     pub fn print_default_workspace_id(&self) -> Result<()> {
-        let id = self.get_default_workspace_id()?;
+        let id = self.api_client.get_default_workspace_id()?;
         println!("Workspace id {}", id);
         return Ok(());
     }
 
     pub fn print_projects(&self) -> Result<()> {
-        self.request(Method::GET, "me/projects".to_string())?
-            .send()?
-            .json::<Vec<Project>>()
-            .context("Could not get projects")?
+        self.api_client
+            .get_projects()?
             .iter()
             .for_each(|project| println!("[{}] {}", project.id, project.name));
         return Ok(());
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct Project {
-    id: u64,
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct UserData {
-    default_workspace_id: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct TimeEntryDto {
-    id: u64,
-    workspace_id: u64,
-    description: Option<String>,
-    project_id: Option<u64>,
-    start: String,
-    stop: Option<String>,
-    duration: i64,
-}
-
 struct TimeEntry {
-    id: u64,
-    workspace_id: u64,
+    _id: u64,
+    _workspace_id: u64,
     description: Option<String>,
-    project_id: Option<u64>,
-    project_name: Option<String>,
+    _project_id: Option<u64>,
+    _project_name: Option<String>,
     start: DateTime<Local>,
     stop: Option<DateTime<Local>>,
     duration: i64,
 }
 
-#[derive(Serialize)]
-struct NewTimeEntry {
-    workspace_id: u64,
-    created_with: String,
-    description: Option<String>,
-    project_id: Option<u64>,
-    start: String,
-    duration: i64,
-}
-
-impl NewTimeEntry {
-    fn from_time_entry(time_entry: &TimeEntry) -> Result<NewTimeEntry> {
-        let now = Utc::now();
-        return Ok(NewTimeEntry {
-            workspace_id: time_entry.workspace_id,
-            created_with: "toggl-cli".to_string(),
-            description: time_entry.description.to_owned(),
-            project_id: time_entry.project_id,
-            start: format!("{:?}", now),
-            duration: -1 * now.timestamp(),
-        });
-    }
-}
-
 impl TimeEntry {
     fn from_dto(dto: &TimeEntryDto) -> Result<TimeEntry> {
         return Ok(TimeEntry {
-            id: dto.id,
-            workspace_id: dto.workspace_id,
+            _id: dto.id,
+            _workspace_id: dto.workspace_id,
             description: dto.description.to_owned(),
-            project_id: dto.project_id,
-            project_name: None,
+            _project_id: dto.project_id,
+            _project_name: None,
             start: dto.start.parse()?,
             stop: dto.stop.to_owned().map(|value| value.parse()).transpose()?,
             duration: dto.duration,
