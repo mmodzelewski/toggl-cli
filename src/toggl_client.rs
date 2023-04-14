@@ -123,7 +123,7 @@ impl TogglClient {
             .context("workspace id should be set")?;
         let started_entry = self
             .api_client
-            .start(workspace_id, description, project_id)?;
+            .start(workspace_id, description, project_id.or_else(|| self.config.project_id))?;
         println!(
             "Time entry started: {}",
             TimeEntry::from_dto(&started_entry)?
