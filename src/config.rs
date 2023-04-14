@@ -1,5 +1,6 @@
-use anyhow::{Context, Error, Ok, Result};
-use std::{collections::HashMap, fmt::Display, fs, str::FromStr};
+use anyhow::{Context, Ok, Result};
+use serde::{Deserialize, Serialize};
+use std::fs;
 
 use crate::dirs::{find_global_config_dir, find_local_config, get_current_dir};
 
@@ -47,7 +48,7 @@ pub fn update_config(global: bool, new_config: Config) -> Result<()> {
     return Ok(());
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Deserialize, Serialize, Debug)]
 pub struct Config {
     pub api_token: Option<String>,
     pub workspace_id: Option<u64>,
@@ -74,62 +75,9 @@ impl Config {
     }
 }
 
-impl FromStr for Config {
-    type Err = Error;
-
-    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
-        let config: HashMap<&str, &str> = value
-            .lines()
-            .filter_map(|line| line.split_once("="))
-            .collect();
-
-        let api_token = config.get("API_TOKEN").map(|value| value.to_string());
-
-        let workspace_id = config
-            .get("WORKSPACE_ID")
-            .map(|id| id.parse::<u64>().context("Could not parse workspace_id"))
-            .transpose()?;
-
-        let project_id = config
-            .get("PROJECT_ID")
-            .map(|id| id.parse::<u64>().context("Could not parse project_id"))
-            .transpose()?;
-
-        return Ok(Config {
-            api_token,
-            workspace_id,
-            project_id,
-        });
-    }
-}
-
-impl Display for Config {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut variables = HashMap::new();
-
-        if let Some(api_token) = &self.api_token {
-            variables.insert("API_TOKEN", api_token.to_owned());
-        }
-        if let Some(ref workspace_id) = &self.workspace_id {
-            variables.insert("WORKSPACE_ID", workspace_id.to_string());
-        }
-        if let Some(ref project_id) = &self.project_id {
-            variables.insert("PROJECT_ID", project_id.to_string());
-        }
-
-        let new_config = variables
-            .iter()
-            .map(|(key, value)| format!("{}={}", key, value))
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        return write!(f, "{}", new_config);
-    }
-}
-
 fn load_global_config() -> Result<Option<Config>> {
     let config_dir = find_global_config_dir()?;
-    let config_path = config_dir.join("config");
+    let config_path = config_dir.join("config.toml");
     let config_exists = config_path
         .try_exists()
         .context("Couldn't read a global config file")?;
@@ -137,17 +85,16 @@ fn load_global_config() -> Result<Option<Config>> {
         return Ok(None);
     }
 
-    let config = fs::read_to_string(config_path)
-        .context("Couldn't read global config file.")?
-        .parse::<Config>()
-        .context("Couldn't parse global config file")?;
+    let config = fs::read_to_string(config_path).context("Couldn't read global config file.")?;
+    let config = toml::from_str(&config).context("Couldn't parse global config file")?;
     return Ok(Some(config));
 }
 
 fn save_global_config(config: &Config) -> Result<()> {
     let config_dir = find_global_config_dir()?;
     let config_path = config_dir.join("config");
-    fs::write(&config_path, config.to_string()).context("Could not save config file")?;
+    let config_string = toml::to_string(&config).context("Couldn't serialize config")?;
+    fs::write(&config_path, config_string).context("Could not save config file")?;
     return Ok(());
 }
 
@@ -156,11 +103,7 @@ fn load_local_config() -> Result<Option<Config>> {
         .map(|path| {
             fs::read_to_string(path)
                 .context("Couldn't read config file")
-                .and_then(|value| {
-                    value
-                        .parse::<Config>()
-                        .context("Couldn't parse config file")
-                })
+                .and_then(|value| toml::from_str(&value).context("Couldn't parse config file"))
         })
         .transpose();
 }
@@ -172,16 +115,15 @@ fn load_current_dir_config() -> Result<Option<Config>> {
     if !exists {
         return Ok(None);
     }
-    let config = fs::read_to_string(config_path)
-        .context("Couldn't read config file")?
-        .parse::<Config>()
-        .context("Couldn't parse config file")?;
+    let config = fs::read_to_string(config_path).context("Couldn't read config file")?;
+    let config = toml::from_str(&config).context("Couldn't parse config file")?;
     return Ok(Some(config));
 }
 
 fn save_current_dir_config(config: &Config) -> Result<()> {
     let config_dir = get_current_dir()?;
     let config_path = config_dir.join(".toggl");
-    fs::write(&config_path, config.to_string()).context("Could not save config file")?;
+    let config_string = toml::to_string(&config).context("Couldn't serialize config")?;
+    fs::write(&config_path, config_string).context("Could not save config file")?;
     return Ok(());
 }
