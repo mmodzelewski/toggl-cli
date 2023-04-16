@@ -63,8 +63,11 @@ pub enum Command {
 
         #[arg(long, short, help = "Set default workspace id")]
         workspace_id: Option<u64>,
-
-        #[arg(long, short, value_hint = ValueHint::Other, help = "Set api token")]
-        api_token: Option<String>,
     },
+
+    #[command(about = "Set api token")]
+    Login {
+        #[arg(value_hint = ValueHint::Other)]
+        api_token: String,
+    }
 }

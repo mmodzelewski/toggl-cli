@@ -14,9 +14,9 @@ pub struct TogglClient {
 }
 
 impl TogglClient {
-    pub fn new(config: Config) -> Result<TogglClient> {
+    pub fn new(api_token: Option<String>, config: Config) -> Result<TogglClient> {
         return Ok(TogglClient {
-            api_client: ApiClient::new(config.api_token.as_deref())?,
+            api_client: ApiClient::new(api_token.as_deref())?,
             config,
         });
     }
