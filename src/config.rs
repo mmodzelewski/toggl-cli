@@ -14,10 +14,6 @@ pub fn load_config() -> Result<Config> {
     let local_config = load_local_config()?;
 
     return Ok(Config {
-        api_token: local_config
-            .clone()
-            .and_then(|lc| lc.api_token)
-            .or(config.api_token),
         workspace_id: local_config
             .clone()
             .and_then(|lc| lc.workspace_id)
@@ -32,15 +28,11 @@ pub fn load_config() -> Result<Config> {
 pub fn update_config(global: bool, new_config: Config) -> Result<()> {
     if global {
         let mut config = load_global_config()?.unwrap_or_default();
-        config.update_api_token(new_config.api_token);
         config.update_project_id(new_config.project_id);
         config.update_workspace_id(new_config.workspace_id);
         save_global_config(&config)?;
     } else {
         let mut config = load_current_dir_config()?.unwrap_or_default();
-        if new_config.api_token.is_some() {
-            println!("API token can only be set globally. Use --global option.");
-        }
         config.update_project_id(new_config.project_id);
         config.update_workspace_id(new_config.workspace_id);
         save_current_dir_config(&config)?;
@@ -50,18 +42,11 @@ pub fn update_config(global: bool, new_config: Config) -> Result<()> {
 
 #[derive(Default, Clone, Deserialize, Serialize, Debug)]
 pub struct Config {
-    pub api_token: Option<String>,
     pub workspace_id: Option<u64>,
     pub project_id: Option<u64>,
 }
 
 impl Config {
-    pub fn update_api_token(&mut self, api_token: Option<String>) {
-        if api_token.is_some() {
-            self.api_token = api_token;
-        }
-    }
-
     pub fn update_workspace_id(&mut self, workspace_id: Option<u64>) {
         if workspace_id.is_some() {
             self.workspace_id = workspace_id;

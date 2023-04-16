@@ -41,7 +41,6 @@ fn main() -> Result<()> {
             } => update_config(
                 global,
                 Config {
-                    api_token: None,
                     workspace_id,
                     project_id,
                 },
