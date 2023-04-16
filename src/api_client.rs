@@ -129,7 +129,7 @@ impl ApiClient {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Project {
     pub id: u64,
     pub name: String,

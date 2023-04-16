@@ -1,23 +1,28 @@
 use anyhow::{Context, Result};
 use keyring::Entry;
 
+pub enum TokenUpdateResult {
+    Deleted,
+    Updated,
+}
+
 pub fn get() -> Result<Option<String>> {
     let entry = get_token_entry()?;
     return Ok(entry.get_password().ok());
 }
 
-pub fn update(api_token: &str) -> Result<()> {
+pub fn update(api_token: &str) -> Result<TokenUpdateResult> {
     let entry = get_token_entry()?;
     if api_token.is_empty() {
         entry
             .delete_password()
             .context("Could not delete api token")?;
-    } else {
-        entry
-            .set_password(api_token)
-            .context("Could not set api token")?;
+        return Ok(TokenUpdateResult::Deleted);
     }
-    return Ok(());
+    entry
+        .set_password(api_token)
+        .context("Could not set api token")?;
+    return Ok(TokenUpdateResult::Updated);
 }
 
 fn get_token_entry() -> Result<keyring::Entry> {

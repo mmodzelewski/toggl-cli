@@ -2,7 +2,10 @@ use anyhow::{Context, Ok, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-use crate::dirs::{find_global_config_dir, find_local_config, get_current_dir};
+use crate::{
+    api_client::Project,
+    dirs::{find_global_config_dir, find_local_config, get_current_dir},
+};
 
 pub fn load_config() -> Result<Config> {
     let config = load_global_config()?;
@@ -22,6 +25,7 @@ pub fn load_config() -> Result<Config> {
             .clone()
             .and_then(|lc| lc.project_id)
             .or(config.project_id),
+        projects: config.projects,
     });
 }
 
@@ -30,6 +34,7 @@ pub fn update_config(global: bool, new_config: Config) -> Result<()> {
         let mut config = load_global_config()?.unwrap_or_default();
         config.update_project_id(new_config.project_id);
         config.update_workspace_id(new_config.workspace_id);
+        config.update_projects(new_config.projects);
         save_global_config(&config)?;
     } else {
         let mut config = load_current_dir_config()?.unwrap_or_default();
@@ -44,18 +49,25 @@ pub fn update_config(global: bool, new_config: Config) -> Result<()> {
 pub struct Config {
     pub workspace_id: Option<u64>,
     pub project_id: Option<u64>,
+    pub projects: Option<Vec<Project>>,
 }
 
 impl Config {
-    pub fn update_workspace_id(&mut self, workspace_id: Option<u64>) {
+    fn update_workspace_id(&mut self, workspace_id: Option<u64>) {
         if workspace_id.is_some() {
             self.workspace_id = workspace_id;
         }
     }
 
-    pub fn update_project_id(&mut self, project_id: Option<u64>) {
+    fn update_project_id(&mut self, project_id: Option<u64>) {
         if project_id.is_some() {
             self.project_id = project_id;
+        }
+    }
+
+    fn update_projects(&mut self, projects: Option<Vec<Project>>) {
+        if projects.is_some() {
+            self.projects = projects;
         }
     }
 }
@@ -77,7 +89,7 @@ fn load_global_config() -> Result<Option<Config>> {
 
 fn save_global_config(config: &Config) -> Result<()> {
     let config_dir = find_global_config_dir()?;
-    let config_path = config_dir.join("config");
+    let config_path = config_dir.join("config.toml");
     let config_string = toml::to_string(&config).context("Couldn't serialize config")?;
     fs::write(&config_path, config_string).context("Could not save config file")?;
     return Ok(());
