@@ -69,5 +69,5 @@ pub enum Command {
     Login {
         #[arg(value_hint = ValueHint::Other)]
         api_token: String,
-    }
+    },
 }

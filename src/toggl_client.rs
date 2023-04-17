@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Local, Utc};
 
 use crate::{
-    api_client::{ApiClient, TimeEntryDto},
+    api_client::{ApiClient, Project, TimeEntryDto},
     config::Config,
 };
 
@@ -70,7 +70,7 @@ impl TogglClient {
     fn get_recent_entries(&self) -> Result<Vec<TimeEntry>> {
         return self.api_client.get_recent_entries().and_then(|vec| {
             vec.into_iter()
-                .map(|dto| TimeEntry::from_dto(&dto))
+                .map(|dto| TimeEntry::from_dto(&dto, &self.config))
                 .collect::<Result<Vec<TimeEntry>>>()
         });
     }
@@ -90,7 +90,7 @@ impl TogglClient {
         return self
             .api_client
             .get_current_entry()?
-            .map(|dto| TimeEntry::from_dto(&dto))
+            .map(|dto| TimeEntry::from_dto(&dto, &self.config))
             .transpose();
     }
 
@@ -98,7 +98,7 @@ impl TogglClient {
         if let Some(stopped_entry) = self.api_client.stop_current_entry()? {
             println!(
                 "Stopped time entry: {}",
-                TimeEntry::from_dto(&stopped_entry)?
+                TimeEntry::from_dto(&stopped_entry, &self.config)?
             );
         } else {
             println!("There are no active time entries");
@@ -111,7 +111,7 @@ impl TogglClient {
         let started_entry = self.api_client.restart()?;
         println!(
             "Time entry started: {}",
-            TimeEntry::from_dto(&started_entry)?
+            TimeEntry::from_dto(&started_entry, &self.config)?
         );
         return Ok(());
     }
@@ -121,12 +121,14 @@ impl TogglClient {
             .config
             .workspace_id
             .context("workspace id should be set")?;
-        let started_entry = self
-            .api_client
-            .start(workspace_id, description, project_id.or_else(|| self.config.project_id))?;
+        let started_entry = self.api_client.start(
+            workspace_id,
+            description,
+            project_id.or_else(|| self.config.project_id),
+        )?;
         println!(
             "Time entry started: {}",
-            TimeEntry::from_dto(&started_entry)?
+            TimeEntry::from_dto(&started_entry, &self.config)?
         );
         return Ok(());
     }
@@ -151,25 +153,36 @@ struct TimeEntry {
     _workspace_id: u64,
     description: Option<String>,
     _project_id: Option<u64>,
-    _project_name: Option<String>,
+    project_name: Option<String>,
     start: DateTime<Local>,
     stop: Option<DateTime<Local>>,
     duration: i64,
 }
 
 impl TimeEntry {
-    fn from_dto(dto: &TimeEntryDto) -> Result<TimeEntry> {
+    fn from_dto(dto: &TimeEntryDto, config: &Config) -> Result<TimeEntry> {
         return Ok(TimeEntry {
             _id: dto.id,
             _workspace_id: dto.workspace_id,
             description: dto.description.to_owned(),
             _project_id: dto.project_id,
-            _project_name: None,
+            project_name: find_project_name(dto.project_id, &config.projects),
             start: dto.start.parse()?,
             stop: dto.stop.to_owned().map(|value| value.parse()).transpose()?,
             duration: dto.duration,
         });
     }
+}
+
+fn find_project_name(project_id: Option<u64>, projects: &Option<Vec<Project>>) -> Option<String> {
+    project_id.and_then(|project_id| {
+        projects.as_ref().and_then(|projects| {
+            projects
+                .iter()
+                .find(|project| project.id == project_id)
+                .map(|project| project.name.to_owned())
+        })
+    })
 }
 
 impl Display for TimeEntry {
@@ -190,14 +203,17 @@ impl Display for TimeEntry {
         write!(f, "{} - {}", format_time(&self.start), stop)?;
 
         if let Some(day) = format_date(&self.start) {
-            write!(f, " {}", day)?;
+            write!(f, " {day}")?;
         }
 
         let duration = Duration::seconds(self.duration);
         if let Some(_) = &self.stop {
             write!(f, " ({})", format_duration(&duration))?;
         }
-        return write!(f, "\t{}", description);
+        if let Some(project_name) = &self.project_name {
+            write!(f, "\t[{project_name}]")?;
+        }
+        return write!(f, "\t{description}");
     }
 }
 
