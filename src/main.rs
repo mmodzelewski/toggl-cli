@@ -34,6 +34,7 @@ fn main() -> Result<()> {
             Command::Status => client?.print_current_entry()?,
             Command::Recent => client?.print_recent_entries()?,
             Command::Restart => client?.restart()?,
+            Command::Switch => client?.switch()?,
             Command::Projects => client?.print_projects()?,
             Command::DefaultWorkspaceId => client?.print_default_workspace_id()?,
             Command::Set {

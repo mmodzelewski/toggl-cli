@@ -38,10 +38,10 @@ cargo install --git https://github.com/mmodzelewski/toggl-cli
 To use toggl-cli, you'll need to provide your Toggl Track API token. You can find it in [Profile settings](https://track.toggl.com/profile) on Toggl Track.
 
 ```sh
-toggl-cli --global set --api-token [API TOKEN]
+toggl-cli login [API TOKEN]
 ```
 
-The token will be saved in a config directory `~/.config/togglcli`.
+The token will be saved in a system's keyring.
 
 ### Start a new time entry
 ```sh
@@ -82,5 +82,6 @@ toggl-cli --project-id [PROJECT ID]
 - [x] Save config in toml files
 - [x] Save API token in a keyring
 - [x] Add autocompletion
-- [ ] Display project name when listing time entries
+- [x] Display project name when listing time entries
+- [x] Add switch command to stop a current time entry and restart the previous one
 

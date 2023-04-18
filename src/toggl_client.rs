@@ -108,11 +108,32 @@ impl TogglClient {
     }
 
     pub fn restart(&self) -> Result<()> {
-        let started_entry = self.api_client.restart()?;
-        println!(
-            "Time entry started: {}",
-            TimeEntry::from_dto(&started_entry, &self.config)?
-        );
+        let recent_entries = self.api_client.get_recent_entries()?;
+        let last_one = recent_entries.first();
+        if let Some(last_one) = last_one {
+            let started = self.api_client.restart(&last_one)?;
+            println!(
+                "Time entry started: {}",
+                TimeEntry::from_dto(&started, &self.config)?
+            );
+        } else {
+            println!("There are no recent entries");
+        }
+        return Ok(());
+    }
+
+    pub fn switch(&self) -> Result<()> {
+        let recent_entries = self.api_client.get_recent_entries()?;
+        let prev = recent_entries.iter().find(|entry| entry.stop.is_some());
+        if let Some(prev) = prev {
+            let started = self.api_client.restart(&prev)?;
+            println!(
+                "Time entry started: {}",
+                TimeEntry::from_dto(&started, &self.config)?
+            );
+        } else {
+            println!("There are no recent entries");
+        }
         return Ok(());
     }
 

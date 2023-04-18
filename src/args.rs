@@ -47,6 +47,9 @@ pub enum Command {
     #[command(about = "Restart the last time entry")]
     Restart,
 
+    #[command(about = "Switch to the time entry before the current one")]
+    Switch,
+
     #[command(about = "List all projects")]
     Projects,
 

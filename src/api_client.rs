@@ -68,21 +68,9 @@ impl ApiClient {
         return Ok(None);
     }
 
-    pub fn restart(&self) -> Result<TimeEntryDto> {
-        let recent_entries = self.get_recent_entries()?;
-        let maybe_last_one = recent_entries.first();
-        if let Some(last_one) = maybe_last_one {
-            let new_time_entry = NewTimeEntry::from_time_entry(last_one)?;
-            let path = format!("workspaces/{}/time_entries", last_one.workspace_id);
-            let stared_entry: TimeEntryDto = self
-                .request(Method::POST, &path)?
-                .json(&new_time_entry)
-                .send()?
-                .json()
-                .context("Could not start a time entry")?;
-            return Ok(stared_entry);
-        }
-        return Err(anyhow!("No recent entries found"));
+    pub fn restart(&self, time_entry: &TimeEntryDto) -> Result<TimeEntryDto> {
+        let new_time_entry = NewTimeEntry::from_time_entry(time_entry)?;
+        return self.start_time_entry(new_time_entry);
     }
 
     pub fn start(
@@ -101,7 +89,11 @@ impl ApiClient {
             duration: -1 * now.timestamp(),
         };
 
-        let path = format!("workspaces/{}/time_entries", workspace_id);
+        return self.start_time_entry(new_time_entry);
+    }
+
+    fn start_time_entry(&self, new_time_entry: NewTimeEntry) -> Result<TimeEntryDto> {
+        let path = format!("workspaces/{}/time_entries", &new_time_entry.workspace_id);
         let stared_entry: TimeEntryDto = self
             .request(Method::POST, &path)?
             .json(&new_time_entry)
