@@ -29,7 +29,9 @@ fn main() -> Result<()> {
             Command::Start {
                 description,
                 project_id,
-            } => client?.start(description, project_id)?,
+                start,
+                time,
+            } => client?.start(description, project_id, start, time)?,
             Command::Stop => client?.stop_current_entry()?,
             Command::Status => client?.print_current_entry()?,
             Command::Recent => client?.print_recent_entries()?,

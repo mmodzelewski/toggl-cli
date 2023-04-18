@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use anyhow::{anyhow, Context, Result};
-use chrono::Utc;
+use chrono::{Duration, Local, NaiveTime, TimeZone, Utc};
 use reqwest::{
     blocking::{Client, RequestBuilder},
     header::CONTENT_TYPE,
@@ -78,15 +80,30 @@ impl ApiClient {
         workspace_id: u64,
         description: Option<String>,
         project_id: Option<u64>,
+        start: Option<String>,
+        time: Option<String>,
     ) -> Result<TimeEntryDto> {
         let now = Utc::now();
+        let start = if let Some(start) = start {
+            let time = NaiveTime::parse_from_str(&start, "%H:%M")?;
+            let naive_date_time = Local::now().date_naive().and_time(time);
+            let time = Local
+                .from_local_datetime(&naive_date_time)
+                .single()
+                .ok_or(anyhow!("Could not convert time"))?;
+            time.with_timezone(&Utc)
+        } else if let Some(time) = time {
+            now - Duration::minutes(time.parse::<i64>()?)
+        } else {
+            now
+        };
         let new_time_entry = NewTimeEntry {
             workspace_id,
             created_with: "toggl-cli".to_string(),
             description,
             project_id,
-            start: format!("{:?}", now),
-            duration: -1 * now.timestamp(),
+            start: format!("{:?}", start),
+            duration: -1 * start.timestamp(),
         };
 
         return self.start_time_entry(new_time_entry);

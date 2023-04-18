@@ -33,6 +33,10 @@ pub enum Command {
         description: Option<String>,
         #[arg(long, short, help = "Project id")]
         project_id: Option<u64>,
+        #[arg(long, short, help = "Start time")]
+        start: Option<String>,
+        #[arg(long, short, help = "Running time")]
+        time: Option<String>,
     },
 
     #[command(about = "Stop the current time entry")]

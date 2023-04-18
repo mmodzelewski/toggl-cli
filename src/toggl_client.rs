@@ -137,7 +137,13 @@ impl TogglClient {
         return Ok(());
     }
 
-    pub fn start(&self, description: Option<String>, project_id: Option<u64>) -> Result<()> {
+    pub fn start(
+        &self,
+        description: Option<String>,
+        project_id: Option<u64>,
+        start: Option<String>,
+        time: Option<String>,
+    ) -> Result<()> {
         let workspace_id = self
             .config
             .workspace_id
@@ -146,6 +152,8 @@ impl TogglClient {
             workspace_id,
             description,
             project_id.or_else(|| self.config.project_id),
+            start,
+            time,
         )?;
         println!(
             "Time entry started: {}",
