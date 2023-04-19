@@ -9,6 +9,7 @@ toggl-cli is a command-line interface (CLI) tool for managing [Toggl Track](http
 - Start a new time entry with a given description
 - Stop currently running time entry
 - Restart the latest time entry
+- Switch back to the previously ended time entry
 - List recent time entries
 
 ## Installation
@@ -35,6 +36,7 @@ cargo install --git https://github.com/mmodzelewski/toggl-cli
 ```
 
 ## Usage
+
 To use toggl-cli, you'll need to provide your Toggl Track API token. You can find it in [Profile settings](https://track.toggl.com/profile) on Toggl Track.
 
 ```sh
@@ -43,45 +45,47 @@ toggl-cli login [API TOKEN]
 
 The token will be saved in a system's keyring.
 
-### Start a new time entry
-```sh
-toggl-cli start "Time entry description" 
+### Options
+
+```
+Usage: toggl-cli [COMMAND]
+
+Commands:
+  completions           Generate shell completions
+  start                 Start a new time entry
+  stop                  Stop the current time entry
+  status                Print the current time entry
+  recent                Print recent time entries
+  restart               Restart the last time entry
+  switch                Switch to the time entry before the current one
+  projects              List all projects
+  default-workspace-id  Print the default workspace id
+  set                   Set configuration options
+  login                 Set api token
+  help                  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
-### Stop the current time entry
-```sh
-toggl-cli stop
-```
+### Set configuration options
 
-### Restart the last time entry
-```sh
-toggl-cli restart
-```
+It is possible to set configuration gloablly or in a specific directory.
+The configuration in a directory takes precedence over the global configuration.
 
-### Show recent time entries
-```sh
-toggl-cli recent
-```
+The tool will look for local configuration going up the directories until it gets to a home folder.
 
-### Set default project
-Global setting
+Global configuration
 ```sh
 toggl-cli --global --project-id [PROJECT ID]
 ```
 
-Setting in a current directory
+Configuration in a current directory
 ```sh
 toggl-cli --project-id [PROJECT ID]
 ```
 
 ## Current limitations
 - When starting a time entry it is not possible to specify tags.
-
-## To do
-
-- [x] Save config in toml files
-- [x] Save API token in a keyring
-- [x] Add autocompletion
-- [x] Display project name when listing time entries
-- [x] Add switch command to stop a current time entry and restart the previous one
 
