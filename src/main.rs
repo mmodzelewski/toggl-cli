@@ -35,6 +35,7 @@ fn main() -> Result<()> {
             Command::Stop => client?.stop_current_entry()?,
             Command::Status => client?.print_current_entry()?,
             Command::Recent => client?.print_recent_entries()?,
+            Command::Summary => client?.print_todays_summary()?,
             Command::Restart => client?.restart()?,
             Command::Switch => client?.switch()?,
             Command::Projects => client?.print_projects()?,

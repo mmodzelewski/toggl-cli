@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Local, Utc};
@@ -62,6 +62,54 @@ impl TogglClient {
             for time_entry in older_entries {
                 println!("{}", time_entry);
             }
+        }
+
+        return Ok(());
+    }
+
+    pub fn print_todays_summary(&self) -> Result<()> {
+        let time_entries = self.get_recent_entries()?;
+        let today = Local::now().date_naive();
+        let today_entries = time_entries
+            .iter()
+            .filter(|entry| entry.start.date_naive() == today)
+            .collect::<Vec<_>>();
+
+        if today_entries.len() > 0 {
+            print!(" -- Today -- ");
+            let total = today_entries
+                .iter()
+                .map(|entry| {
+                    if entry.stop.is_some() {
+                        entry.duration
+                    } else {
+                        Utc::now().timestamp() - entry.start.timestamp()
+                    }
+                })
+                .sum::<i64>();
+            let duration = Duration::seconds(total);
+            let hours = duration.num_hours();
+            let minutes = duration.num_minutes() - hours * 60;
+            println!("⌛{} hours {:02} minutes", hours, minutes);
+        }
+
+        let mut summed_entries = HashMap::new();
+        today_entries.iter().for_each(|&entry| {
+            if entry.stop.is_none() {
+                return;
+            }
+            let description = entry.description.clone().unwrap_or(String::from(""));
+            let project = entry.project_name.clone().unwrap_or(String::from(""));
+            let duration = entry.duration;
+            summed_entries
+                .entry(description)
+                .and_modify(|v: &mut (String, i64)| (*v).1 += duration)
+                .or_insert((project, duration));
+        });
+
+        for (key, (project, time)) in summed_entries {
+            let duration = Duration::seconds(time);
+            println!("{}\t[{}]\t{}",  format_duration(&duration), project, key);
         }
 
         return Ok(());

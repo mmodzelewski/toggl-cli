@@ -48,6 +48,9 @@ pub enum Command {
     #[command(about = "Print recent time entries")]
     Recent,
 
+    #[command(about = "Print todays time entries grouped by description")]
+    Summary,
+
     #[command(about = "Restart the last time entry")]
     Restart,
 
