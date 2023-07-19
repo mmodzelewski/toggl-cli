@@ -109,7 +109,7 @@ impl TogglClient {
 
         for (key, (project, time)) in summed_entries {
             let duration = Duration::seconds(time);
-            println!("{}\t[{}]\t{}",  format_duration(&duration), project, key);
+            println!("{}\t[{}]\t{}", format_duration(&duration), project, key);
         }
 
         return Ok(());
