@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use chrono::{Duration, Local, NaiveTime, TimeZone, Utc};
+use chrono::{Duration, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use reqwest::{
     blocking::{Client, RequestBuilder},
     header::CONTENT_TYPE,
@@ -38,6 +38,16 @@ impl ApiClient {
     pub fn get_recent_entries(&self) -> Result<Vec<TimeEntryDto>> {
         return self
             .request(Method::GET, "me/time_entries")?
+            .send()?
+            .json()
+            .context("Could not get time entries");
+    }
+
+    pub fn get_entries_from_day(&self, day: NaiveDate) -> Result<Vec<TimeEntryDto>> {
+        return self
+            .request(Method::GET, "me/time_entries")?
+            .query(&[("start_date", format!("{}", day))])
+            .query(&[("end_date", format!("{}", day + Duration::days(1)))])
             .send()?
             .json()
             .context("Could not get time entries");

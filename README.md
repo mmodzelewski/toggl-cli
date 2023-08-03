@@ -11,6 +11,7 @@ toggl-cli is a command-line interface (CLI) tool for managing [Toggl Track](http
 - Restart the latest time entry
 - Switch back to the previously ended time entry
 - List recent time entries
+- Print a summary for a given day
 
 ## Installation
 
@@ -56,6 +57,7 @@ Commands:
   stop                  Stop the current time entry
   status                Print the current time entry
   recent                Print recent time entries
+  summary               Print time entries from a given day grouped by description
   restart               Restart the last time entry
   switch                Switch to the time entry before the current one
   projects              List all projects

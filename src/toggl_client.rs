@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
 
 use crate::{
     api_client::{ApiClient, Project, TimeEntryDto},
@@ -67,17 +67,18 @@ impl TogglClient {
         return Ok(());
     }
 
-    pub fn print_todays_summary(&self) -> Result<()> {
-        let time_entries = self.get_recent_entries()?;
-        let today = Local::now().date_naive();
-        let today_entries = time_entries
-            .iter()
-            .filter(|entry| entry.start.date_naive() == today)
-            .collect::<Vec<_>>();
+    pub fn print_day_summary(&self, days_before: Option<u8>) -> Result<()> {
+        let today = Local::now();
+        let day = (today - Duration::days(days_before.unwrap_or(0) as i64)).date_naive();
+        let time_entries = self.get_entries_from_day(day)?;
 
-        if today_entries.len() > 0 {
-            print!(" -- Today -- ");
-            let total = today_entries
+        if time_entries.len() > 0 {
+            if day == today.date_naive() {
+                print!(" -- Today -- ");
+            } else {
+                print!(" -- {} -- ", day);
+            }
+            let total = time_entries
                 .iter()
                 .map(|entry| {
                     if entry.stop.is_some() {
@@ -94,7 +95,7 @@ impl TogglClient {
         }
 
         let mut summed_entries = HashMap::new();
-        today_entries.iter().for_each(|&entry| {
+        time_entries.iter().for_each(|entry| {
             if entry.stop.is_none() {
                 return;
             }
@@ -117,6 +118,14 @@ impl TogglClient {
 
     fn get_recent_entries(&self) -> Result<Vec<TimeEntry>> {
         return self.api_client.get_recent_entries().and_then(|vec| {
+            vec.into_iter()
+                .map(|dto| TimeEntry::from_dto(&dto, &self.config))
+                .collect::<Result<Vec<TimeEntry>>>()
+        });
+    }
+
+    fn get_entries_from_day(&self, day: NaiveDate) -> Result<Vec<TimeEntry>> {
+        return self.api_client.get_entries_from_day(day).and_then(|vec| {
             vec.into_iter()
                 .map(|dto| TimeEntry::from_dto(&dto, &self.config))
                 .collect::<Result<Vec<TimeEntry>>>()
