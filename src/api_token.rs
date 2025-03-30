@@ -15,7 +15,7 @@ pub fn update(api_token: &str) -> Result<TokenUpdateResult> {
     let entry = get_token_entry()?;
     if api_token.is_empty() {
         entry
-            .delete_password()
+            .delete_credential()
             .context("Could not delete api token")?;
         return Ok(TokenUpdateResult::Deleted);
     }
